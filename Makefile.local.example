@@ -1,0 +1,7 @@
+BINDIR=$(HOME)/bin
+LIBDIR=$(HOME)/lib
+INCDIR=$(HOME)/include
+PYDIR=$(HOME)/lib/python
+
+CPP=g++ -Wall -Wno-pragmas -Wno-strict-aliasing -Wno-unused-local-typedefs -O3 -ffast-math -funroll-loops -fPIC -I$(HOME)/include -L$(HOME)/lib
+MPICPP=mpicxx -Wall -Wno-pragmas -Wno-strict-aliasing -Wno-unused-local-typedefs -O3 -ffast-math -funroll-loops -fPIC -I$(HOME)/include -L$(HOME)/lib
