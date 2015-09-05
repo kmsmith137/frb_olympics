@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 
-from frb_olympics_c import frb_rng, frb_pulse
+from frb_olympics_c import frb_rng, frb_pulse, frb_search_params
 
 
 class compare_run:

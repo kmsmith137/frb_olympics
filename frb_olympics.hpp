@@ -150,6 +150,8 @@ struct frb_pulse {
     double   dispersion_measure;    // pc cm^{-3}
     double   scattering_measure;    // scatter broadening in msec at 1 GHz
 
+    frb_pulse();  // default constructor catering to cython
+
     frb_pulse(double fluence, double arrival_time, double intrinsic_width,
 	      double dispersion_measure, double scattering_measure, double spectral_index);
 

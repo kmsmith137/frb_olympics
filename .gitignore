@@ -1,6 +1,7 @@
 *~
 *.o
 *.mo
+*.pyc
 test-rng
 test-pulse-F
 write-pulse

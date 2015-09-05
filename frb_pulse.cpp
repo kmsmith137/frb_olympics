@@ -241,6 +241,12 @@ static frb_sampled_pulse make_pulse(const frb_pulse &p, double freq_lo_MHz, doub
 // -------------------------------------------------------------------------------------------------
 
 
+// default constructor catering to cython
+frb_pulse::frb_pulse()
+    : fluence(0.), spectral_index(0.), arrival_time(0.), intrinsic_width(0.), dispersion_measure(0.), scattering_measure(0.)
+{ }
+
+
 frb_pulse::frb_pulse(double fluence_, double arrival_time_, double intrinsic_width_,
 		     double dispersion_measure_, double scattering_measure_, double spectral_index_)
     : fluence(fluence_), 

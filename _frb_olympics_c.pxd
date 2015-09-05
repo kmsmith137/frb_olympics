@@ -1,3 +1,6 @@
+from libcpp.string cimport string
+
+
 cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
     cdef cppclass frb_rng:
         frb_rng() except +
@@ -8,6 +11,8 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
 
 
     cdef cppclass frb_pulse:
+        frb_pulse()
+
         frb_pulse(double fluence, double arrival_time, double intrinsic_width,
                   double dispersion_measure, double scattering_measure, double spectral_index) except +
         
@@ -21,3 +26,28 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
         double get_signal_to_noise_in_channel(double freq_lo_MHz, double freq_hi_MHz, double dt_sample) except +
         
         void add_to_timestream(double freq_lo_MHz, double freq_hi_MHz, float *timestream, int nsamples_per_chunk, double dt_sample, int ichunk) except +
+
+
+    cdef cppclass frb_search_params:
+        frb_search_params(frb_search_params &) except +
+        frb_search_params(string &filename) except +
+
+        double  dm_min, dm_max
+        double  sm_min, sm_max
+        double  beta_min, beta_max
+        double  width_min, width_max
+
+        int     nchan
+        double  band_freq_lo_MHz
+        double  band_freq_hi_MHz
+        
+        double  dt_sample
+        int     nsamples_tot
+        int     nsamples_per_chunk
+        int     nchunks
+
+        frb_pulse  make_random_pulse(frb_rng &r, double fluence) except +
+        void       get_allowed_arrival_times(double &t0, double &t1, double intrinsic_width, double dm, double sm) except +
+        void       simulate_noise(frb_rng &r, float *timestream) except +
+        void       add_pulse(frb_pulse &pulse, float *timestream, int ichunk) except +
+        double     get_signal_to_noise_of_pulse(frb_pulse &pulse) except +
