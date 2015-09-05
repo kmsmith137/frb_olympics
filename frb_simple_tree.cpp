@@ -48,10 +48,10 @@ struct frb_simple_tree_search_algorithm : public frb_search_algorithm_base
 frb_simple_tree_search_algorithm::frb_simple_tree_search_algorithm(const frb_search_params &p_, int depth_, int nsquish_)
     : frb_search_algorithm_base(p_), depth(depth_), ndm(1 << depth_), nsquish(nsquish_)
 { 
-    assert(depth >= 1);
-    assert(nsquish >= 0);
-    assert(nsquish <= 6);
-    assert(p.nsamples_per_chunk % (1 << nsquish) == 0);
+    xassert(depth >= 1);
+    xassert(nsquish >= 0);
+    xassert(nsquish <= 6);
+    xassert(p.nsamples_per_chunk % (1 << nsquish) == 0);
 
     stringstream s;
     s << "simple_tree-" << ndm << "-" << nsquish;
@@ -139,7 +139,7 @@ float **frb_simple_tree_search_algorithm::dedisperse_chunk_incremental(float **b
 
 float **frb_simple_tree_search_algorithm::dedisperse_chunk_non_incremental(float **buf)
 {
-    assert(p.nchunks == 1);
+    xassert(p.nchunks == 1);
 
     float **buf2 = jstree::matrix(ndm, ndata_squished);
     jstree::dedisperse(buf, buf2, ndm, ndata_squished);
@@ -152,8 +152,8 @@ float **frb_simple_tree_search_algorithm::dedisperse_chunk_non_incremental(float
 
 void frb_simple_tree_search_algorithm::postprocess_chunk_incremental(int ichunk, int idm, int it0, int it1, float *debug_buffer)
 {
-    assert(idm >= 0 && idm < ndm);
-    assert(nring >= ndata_squished + ndm);
+    xassert(idm >= 0 && idm < ndm);
+    xassert(nring >= ndata_squished + ndm);
 
     // Formal start time of ring buffer
     int it_ring = (ichunk+1)*ndata_squished - nring;
@@ -184,8 +184,8 @@ void frb_simple_tree_search_algorithm::postprocess_chunk_incremental(int ichunk,
 
 void frb_simple_tree_search_algorithm::postprocess_chunk_non_incremental(float **buf, int idm, int it0, int it1, float *debug_buffer)
 {
-    assert(p.nchunks == 1);
-    assert(idm >= 0 && idm < ndm);
+    xassert(p.nchunks == 1);
+    xassert(idm >= 0 && idm < ndm);
 
     // clamp
     it0 = max(it0, 0);
@@ -272,7 +272,7 @@ void frb_simple_tree_search_algorithm::search_chunk(const float *chunk, int ichu
 
 void frb_simple_tree_search_algorithm::search_end()
 {
-    assert(this->search_result > -1.0e30);
+    xassert(this->search_result > -1.0e30);
 
     this->ring_t0 = 0;
     this->nring = 0;

@@ -59,7 +59,7 @@ static void do_tree_transform(float *buf, int depth, int nt)
 // Fills the 'dst' array (length 2^depth).  The scratch array should have size 2^(depth-1).
 static void get_tree_offsets(int *dst, int depth, int idm, int *scratch)
 {
-    assert(idm >= 0 && idm < (1 << depth));
+    xassert(idm >= 0 && idm < (1 << depth));
 
     if (depth == 0) {
 	dst[0] = 0;
@@ -91,11 +91,11 @@ static void get_tree_offsets(int *dst, int depth, int idm, int *scratch)
 //
 static inline double w2(double a, double b, int ia, int ib, int ndm, int s, int nups, const int *offsets, double *scratch)
 {
-    assert(ia >= 0);
-    assert(ia <= ib);
-    assert(ib < ndm);
-    assert(s >= 0);
-    assert(s < nups);
+    xassert(ia >= 0);
+    xassert(ia <= ib);
+    xassert(ib < ndm);
+    xassert(s >= 0);
+    xassert(s < nups);
 
     if (ia == ib)
 	return 1.0;
@@ -158,9 +158,9 @@ struct frb_bonsai_search_algorithm : public frb_search_algorithm_base
 frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const frb_search_params &p, int depth_, int nups_)
     : frb_search_algorithm_base(p), depth(depth_), ntree(1 << depth_), nups(nups_)
 {
-    assert(depth >= 1);
-    assert(p.nchunks == 1);  // incremental search not implemented yet
-    assert(nups >= 1);
+    xassert(depth >= 1);
+    xassert(p.nchunks == 1);  // incremental search not implemented yet
+    xassert(nups >= 1);
 
     stringstream s;
     s << "bonsai-" << ntree;
@@ -198,13 +198,13 @@ frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const frb_search_params
 	double a = ntree * (tt0 - t0) / (t1 - t0);
 	double b = ntree * (tt1 - t0) / (t1 - t0);
 
-	assert(a > -1.0e-10);
-	assert(a < b);
-	assert(b < ntree + 1.0e-10);
+	xassert(a > -1.0e-10);
+	xassert(a < b);
+	xassert(b < ntree + 1.0e-10);
 
 	int ia = max((int)a, 0);
 	int ib = min((int)b, ntree-1);
-	assert(ia <= ib);
+	xassert(ia <= ib);
 
 	chan_lo_l2[ichan] = a;
 	chan_hi_l2[ichan] = b;
@@ -233,7 +233,7 @@ frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const frb_search_params
 			ntree, s, nups, &offsets[0], &scratch2[0]);
 	    }
 
-	    assert(w > 0.0);
+	    xassert(w > 0.0);
 	    weight_arr[idm*nups + s] = 1.0 / sqrt(w);
 	}
     }
@@ -246,7 +246,7 @@ frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const frb_search_params
 
     for (int ichan = 0; ichan < nchan; ichan++) {
 	int j = chan_hi_il2[ichan] - chan_lo_il2[ichan];
-	assert(j >= 0);
+	xassert(j >= 0);
 
 	while ((int)occupancy.size() <= j)
 	    occupancy.push_back(0);
@@ -297,7 +297,7 @@ void frb_bonsai_search_algorithm::search_start()
 void frb_bonsai_search_algorithm::search_chunk(const float *chunk, int ichunk, float *debug_buffer)
 {
     // incremental search not supported yet
-    assert(ichunk == 0);
+    xassert(ichunk == 0);
 
     int nt_narrow = p.nsamples_per_chunk * nups;
     double dt_narrow = p.dt_sample / nups;
@@ -346,7 +346,7 @@ void frb_bonsai_search_algorithm::search_chunk(const float *chunk, int ichunk, f
 
 void frb_bonsai_search_algorithm::search_end()
 {
-    assert(this->search_result > -1.0e30);
+    xassert(this->search_result > -1.0e30);
 }
 
 void frb_bonsai_search_algorithm::run_unit_tests() const
@@ -402,7 +402,7 @@ void frb_bonsai_search_algorithm::run_unit_tests() const
 
     for (int ichan = 0; ichan < nchan; ichan++) {
 	int max_samp = (chan_hi_il2[ichan] + nups - 1) / nups;	
-	assert(max_samp < nt_wide);
+	xassert(max_samp < nt_wide);
 
 	for (int isamp = 0; isamp <= max_samp; isamp++) {
 	    memset(&chunk[0], 0, chunk.size() * sizeof(chunk[0]));
@@ -422,7 +422,7 @@ void frb_bonsai_search_algorithm::run_unit_tests() const
 
     for (int idm = 0; idm < ntree; idm++) {
 	for (int s = 0; s < nups; s++) {
-	    assert(acc[idm*nups+s] > 0.0);
+	    xassert(acc[idm*nups+s] > 0.0);
 	    
 	    double w1 = weight_arr[idm*nups+s];
 	    double w2 = 1.0 / sqrt(acc[idm*nups+s]);
@@ -453,7 +453,7 @@ frb_search_algorithm_base::ptr_t frb_bonsai_search_algorithm::create(const vecto
 	    continue;
 
 	nups = xlexical_cast<int> (tokens[i+1], "bonsai nupsample");
-	assert(nups >= 1);
+	xassert(nups >= 1);
 
 	tokens.erase(tokens.begin()+i, tokens.begin()+i+2);
 	break;

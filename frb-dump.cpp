@@ -93,19 +93,19 @@ int main(int argc, char **argv)
     }
 
     hid_t group_id = H5Gopen1(file_id, ".");
-    assert(group_id >= 0);
+    xassert(group_id >= 0);
 
     hid_t dataspace_id = H5Screate(H5S_SIMPLE);
-    assert(dataspace_id >= 0);
+    xassert(dataspace_id >= 0);
 
     int ret = H5Sset_extent_simple(dataspace_id, 2, &shape[0], &shape[0]);
-    assert(ret >= 0);
+    xassert(ret >= 0);
 
     hid_t dataset_id = H5Dcreate1(group_id, "DATA", H5T_NATIVE_FLOAT, dataspace_id, H5P_DEFAULT);
-    assert(dataset_id >= 0);
+    xassert(dataset_id >= 0);
 
     ret = H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &debug_buffer[0]);
-    assert(ret >= 0);
+    xassert(ret >= 0);
 
     H5Fclose(file_id);
     return 0;

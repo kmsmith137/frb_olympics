@@ -13,7 +13,7 @@ namespace frb_olympics {
 
 void get_pulse_endpoints(double &t0, double &t1, double intrinsic_width, double dm, double sm, double freq_lo_MHz, double freq_hi_MHz)
 {
-    assert(freq_lo_MHz <= freq_hi_MHz);
+    xassert(freq_lo_MHz <= freq_hi_MHz);
 
     t0 = dispersion_delay(dm,freq_hi_MHz) - 5*intrinsic_width;
     t1 = dispersion_delay(dm,freq_lo_MHz) + 5*intrinsic_width + 12.5*scatter_broadening(sm,freq_lo_MHz);
@@ -89,18 +89,18 @@ void read_kv_pairs(const string &filename, boost::unordered_map<string,string> &
 
 bool is_power_of_two(int n)
 {
-    assert(n >= 1);
+    xassert(n >= 1);
     return (n & (n-1)) == 0;
 }
 
 int round_up_to_power_of_two(int n)
 {
-    assert(n >= 1);
+    xassert(n >= 1);
 
     int ret = 1;
     while (ret < n) {
 	ret <<= 1;
-	assert(ret > 0);  // detect signed overflow
+	xassert(ret > 0);  // detect signed overflow
     }
 
     return ret;
@@ -108,7 +108,7 @@ int round_up_to_power_of_two(int n)
 
 int integer_log2(int n)
 {
-    assert(is_power_of_two(n));
+    xassert(is_power_of_two(n));
 
     int ret = 0;
     while ((1 << ret) < n)
@@ -128,7 +128,7 @@ static inline bool time_before(const struct timeval &tv1, const struct timeval &
 
 double time_diff(const struct timeval &tv1, const struct timeval &tv2)
 {
-    assert(time_before(tv1, tv2));
+    xassert(time_before(tv1, tv2));
     return (tv2.tv_sec - tv1.tv_sec) + 1.0e-6 * (tv2.tv_usec - tv1.tv_usec);
 }
 

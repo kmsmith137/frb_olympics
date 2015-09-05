@@ -61,9 +61,9 @@ struct frb_sloth_search_algorithm : public frb_search_algorithm_base
 frb_sloth_search_algorithm::frb_sloth_search_algorithm(const frb_search_params &p_, double epsilon_, int noversample)
     : frb_search_algorithm_base(p_), epsilon(epsilon_), novs(noversample)
 {
-    assert(epsilon > 0.0);
-    assert(noversample >= 1);
-    assert(noversample <= 16);      // surely unintentional
+    xassert(epsilon > 0.0);
+    xassert(noversample >= 1);
+    xassert(noversample <= 16);      // surely unintentional
 
     // FIXME current implementation numerically unstable as DM->0!
     if (p.dm_min < 0.1)
@@ -90,13 +90,13 @@ frb_sloth_search_algorithm::frb_sloth_search_algorithm(const frb_search_params &
 
 	// Earliest pulse arrival time which overlaps "wide" sample 0
 	int i0 = round_up(-dt1);
-	assert(i0 + dt1 > -1.0e-10);
-	assert(i0 + dt1 - 1 < 1.0e-10);
+	xassert(i0 + dt1 > -1.0e-10);
+	xassert(i0 + dt1 - 1 < 1.0e-10);
 
 	// Earliest pulse arrival time which does not overlap negatively indexed "wide" samples
 	int i1 = round_up(-dt0);
-	assert(i1 + dt0 > -1.0e-10);
-	assert(i1 + dt0 - 1 < 1.0e-10);
+	xassert(i1 + dt0 > -1.0e-10);
+	xassert(i1 + dt0 - 1 < 1.0e-10);
 
 	save_i0[idm] = i0;
 	save_n[idm] = i1 - i0;
@@ -215,7 +215,7 @@ void frb_sloth_search_algorithm::search_chunk(const float *chunk, int ichunk, fl
 	for (int idm = 0; idm < ndm; idm++) {
 	    // Number of entries in the work buffer to be formally updated (actual number will be smaller)
 	    int nt = save_n[idm] + ns*novs;
-	    assert(nt <= nwork);
+	    xassert(nt <= nwork);
 
 	    // Min/max dispersion delay in channel, in oversampled units
 	    double dm = dm_table[idm];
@@ -233,9 +233,9 @@ void frb_sloth_search_algorithm::search_chunk(const float *chunk, int ichunk, fl
 	    i1 = (save_i0[idm] + i1 + icsum);
 
 	    // Check that there are enough sentinels
-	    assert(i0 >= 0);
-	    assert(i0 <= i1);
-	    assert(i1+nt+1 <= ncsum);
+	    xassert(i0 >= 0);
+	    xassert(i0 <= i1);
+	    xassert(i1+nt+1 <= ncsum);
 
 	    // Interpolation weights
 	    double w00 = (1.0-x0) / (dt1-dt0);
@@ -298,7 +298,7 @@ void frb_sloth_search_algorithm::search_chunk(const float *chunk, int ichunk, fl
 
 void frb_sloth_search_algorithm::search_end()
 {
-    assert(this->search_result > -1.0e30);
+    xassert(this->search_result > -1.0e30);
     deallocate(this->work_buf);
 }
 

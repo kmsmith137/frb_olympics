@@ -69,8 +69,8 @@ static void memhack_start(int memhack)
 	return;
 
     init_node_info();   // no-ops if already initialized
-    assert(memhack >= 1);
-    assert(mpi_tasks_per_node % memhack == 0);
+    xassert(memhack >= 1);
+    xassert(mpi_tasks_per_node % memhack == 0);
 
     int nbarriers = (mpi_rank_within_node % memhack) + 1;
     for (int i = 0; i < nbarriers; i++)
@@ -84,8 +84,8 @@ static void memhack_end(int memhack)
 	return;
 
     init_node_info();   // no-ops if already initialized
-    assert(memhack >= 1);
-    assert(mpi_tasks_per_node % memhack == 0);
+    xassert(memhack >= 1);
+    xassert(mpi_tasks_per_node % memhack == 0);
 
     int nbarriers = memhack - (mpi_rank_within_node % memhack);
     for (int i = 0; i < nbarriers; i++)
@@ -149,10 +149,10 @@ int main(int argc, char **argv)
 	cout << " " << argv[i];
     cout << endl;
 
-    assert(nmc_noise_tot >= 0);
-    assert(nmc_pulse_tot >= 0);
-    assert(nmc_noise_tot % mpi_size == 0);
-    assert(nmc_pulse_tot % mpi_size == 0);
+    xassert(nmc_noise_tot >= 0);
+    xassert(nmc_pulse_tot >= 0);
+    xassert(nmc_noise_tot % mpi_size == 0);
+    xassert(nmc_pulse_tot % mpi_size == 0);
 
     int nmc_noise_loc = nmc_noise_tot / mpi_size;
     int nmc_pulse_loc = nmc_pulse_tot / mpi_size;

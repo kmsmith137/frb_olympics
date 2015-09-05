@@ -30,10 +30,10 @@ frb_rechunked_search::frb_rechunked_search(const frb_search_params &p_, frb_sear
     : frb_search_algorithm_base(p_), child(child_)
 { 
     // more asserts could be added...
-    assert(child->p.nchan == p.nchan);
-    assert(child->p.nsamples_tot == p.nsamples_tot);
-    assert(child->p.nsamples_per_chunk % p.nsamples_per_chunk == 0);
-    assert(child->p.nsamples_tot == child->p.nchunks * child->p.nsamples_per_chunk);
+    xassert(child->p.nchan == p.nchan);
+    xassert(child->p.nsamples_tot == p.nsamples_tot);
+    xassert(child->p.nsamples_per_chunk % p.nsamples_per_chunk == 0);
+    xassert(child->p.nsamples_tot == child->p.nchunks * child->p.nsamples_per_chunk);
 
     stringstream s;
     s << "rechunked-" << child->p.nsamples_per_chunk << "-" << child->name;
@@ -84,8 +84,8 @@ frb_search_algorithm_base::ptr_t frb_rechunked_search::create(const vector<strin
 	return frb_search_algorithm_base::ptr_t();
 
     int child_nsamples_per_chunk = xlexical_cast<int> (tokens[0], "frb rechunk factor");
-    assert(child_nsamples_per_chunk % p.nsamples_per_chunk == 0);
-    assert(p.nsamples_tot % child_nsamples_per_chunk == 0);
+    xassert(child_nsamples_per_chunk % p.nsamples_per_chunk == 0);
+    xassert(p.nsamples_tot % child_nsamples_per_chunk == 0);
 
     frb_search_params child_search_params = p;
     child_search_params.nsamples_per_chunk = child_nsamples_per_chunk;

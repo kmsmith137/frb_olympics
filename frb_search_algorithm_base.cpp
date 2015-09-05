@@ -73,13 +73,13 @@ frb_search_algorithm_base::ptr_t frb_search_algorithm_base::parse_line(const vec
 	    continue;
 
 	memhack = xlexical_cast<int> (tokens[i+1], "memhack");
-	assert(memhack >= 1);
+	xassert(memhack >= 1);
 
 	tokens.erase(tokens.begin()+i, tokens.begin()+i+2);
 	break;
     }
 
-    assert(tokens.size() > 0);
+    xassert(tokens.size() > 0);
     string algo_name = tokens[0];
     tokens.erase(tokens.begin());
 

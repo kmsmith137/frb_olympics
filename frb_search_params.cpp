@@ -32,39 +32,39 @@ frb_search_params::frb_search_params(const string &filename)
 
     this->dm_min = kv_extract<double>(filename, kv_pairs, "dm_min");
     this->dm_max = kv_extract<double>(filename, kv_pairs, "dm_max");
-    assert(dm_min <= dm_max);
-    assert(dm_min >= 0.0);
+    xassert(dm_min <= dm_max);
+    xassert(dm_min >= 0.0);
 
     this->sm_min = kv_extract<double>(filename, kv_pairs, "sm_min");
     this->sm_max = kv_extract<double>(filename, kv_pairs, "sm_max");
-    assert(sm_min <= sm_max);
-    assert(sm_min >= 0.0);
+    xassert(sm_min <= sm_max);
+    xassert(sm_min >= 0.0);
 
     this->beta_min = kv_extract<double>(filename, kv_pairs, "beta_min");
     this->beta_max = kv_extract<double>(filename, kv_pairs, "beta_max");
-    assert(beta_min <= beta_max);
+    xassert(beta_min <= beta_max);
     
     this->width_min = kv_extract<double>(filename, kv_pairs, "width_min");
     this->width_max = kv_extract<double>(filename, kv_pairs, "width_max");
-    assert(width_min <= width_max);
-    assert(width_min >= 0.0);
+    xassert(width_min <= width_max);
+    xassert(width_min >= 0.0);
 
     this->nchan = kv_extract<int>(filename, kv_pairs, "nchan");
-    assert(nchan > 0);
+    xassert(nchan > 0);
 
     this->band_freq_lo_MHz = kv_extract<double>(filename, kv_pairs, "freq_lo");
     this->band_freq_hi_MHz = kv_extract<double>(filename, kv_pairs, "freq_hi");
-    assert(band_freq_lo_MHz < band_freq_hi_MHz);
-    assert(band_freq_lo_MHz > 100.0);
+    xassert(band_freq_lo_MHz < band_freq_hi_MHz);
+    xassert(band_freq_lo_MHz > 100.0);
 
     this->dt_sample = kv_extract<double>(filename, kv_pairs, "dt_sample");
     this->nsamples_tot = kv_extract<int>(filename, kv_pairs, "nsamples_tot");
     this->nsamples_per_chunk = kv_extract<int>(filename, kv_pairs, "nsamples_per_chunk");
 
-    assert(dt_sample > 0.0);
-    assert(nsamples_tot > 0.0);
-    assert(nsamples_per_chunk > 0.0);
-    assert(nsamples_tot % nsamples_per_chunk == 0);
+    xassert(dt_sample > 0.0);
+    xassert(nsamples_tot > 0.0);
+    xassert(nsamples_per_chunk > 0.0);
+    xassert(nsamples_tot % nsamples_per_chunk == 0);
 
     this->nchunks = nsamples_tot / nsamples_per_chunk;
 }
@@ -110,7 +110,7 @@ frb_pulse frb_search_params::make_random_pulse(frb_rng &r, double fluence) const
     this->get_allowed_arrival_times(t0, t1, width, dm, sm);
 
     // if this assert fails, the searched timestream is too short to accommodate the pulse
-    assert(t0 < t1);
+    xassert(t0 < t1);
 
     // now assign arrival time
     double arrival_time = r.uniform(t0, t1);
@@ -176,8 +176,8 @@ void frb_search_params::make_dm_table(std::vector<double> &dm_table, double epsi
 	dm_table[i] = Finv(F, DM0, DM1, epsilon);
     }
 
-    assert(fabs(dm_table[0] - dm_min) < 1.0e-3);
-    assert(fabs(dm_table[ndm-1] - dm_max) < 1.0e-3);
+    xassert(fabs(dm_table[0] - dm_min) < 1.0e-3);
+    xassert(fabs(dm_table[ndm-1] - dm_max) < 1.0e-3);
 
     dm_table[0] = dm_min;
     dm_table[ndm-1] = dm_max;

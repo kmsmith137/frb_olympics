@@ -36,8 +36,8 @@ struct frb_simple_direct_search_algorithm : public frb_search_algorithm_base
 frb_simple_direct_search_algorithm::frb_simple_direct_search_algorithm(const frb_search_params &p_, double epsilon_)
     : frb_search_algorithm_base(p_), epsilon(epsilon_)
 {
-    assert(epsilon > 0.0);
-    assert(p.nchunks == 1);   // incremental search not implemented
+    xassert(epsilon > 0.0);
+    xassert(p.nchunks == 1);   // incremental search not implemented
 
     stringstream s;
     s << "simple_direct-" << epsilon; 
@@ -59,8 +59,8 @@ frb_simple_direct_search_algorithm::frb_simple_direct_search_algorithm(const frb
 
     // some paranoid checking
     for (int idm = 0; idm< ndm; idm++) {
-	assert(it0_table[idm] >= it0_table[ndm-1]);
-	assert(it1_table[idm] <= it1_table[0]);
+	xassert(it0_table[idm] >= it0_table[ndm-1]);
+	xassert(it1_table[idm] <= it1_table[0]);
     }
 
     this->min_it0 = it0_table[ndm-1];
@@ -83,7 +83,7 @@ void frb_simple_direct_search_algorithm::search_start()
 void frb_simple_direct_search_algorithm::search_chunk(const float *chunk, int ichunk, float *debug_buffer)
 {
     // incremental search not supported
-    assert(ichunk == 0);
+    xassert(ichunk == 0);
 
     float w = 1.0 / sqrt(p.nchan);
 
@@ -103,8 +103,8 @@ void frb_simple_direct_search_algorithm::search_chunk(const float *chunk, int ic
 	    int d = it0 + (int)(dispersion_delay(dm,nu) / p.dt_sample);   // d = offset between buf and channel timestream
 	    int s = ichan * p.nsamples_per_chunk + d;                     // s = offset between buf and chunk
 
-	    assert(d >= 0);
-	    assert(d+nt <= p.nsamples_per_chunk);
+	    xassert(d >= 0);
+	    xassert(d+nt <= p.nsamples_per_chunk);
 	    //int j0 = max(-d, 0);                                          // j0 = initial offset in buf
 	    //int j1 = min(p.nsamples_per_chunk - d, nt);                   // j1 = final offset in buf
 
@@ -118,8 +118,8 @@ void frb_simple_direct_search_algorithm::search_chunk(const float *chunk, int ic
 	if (debug_buffer) {
 	    int d = it0 - min_it0;  // d = offset between buf and debug timestream
 
-	    assert(d >= 0);
-	    assert(d+nt <= debug_buffer_nt);
+	    xassert(d >= 0);
+	    xassert(d+nt <= debug_buffer_nt);
 
 	    for (int j = 0; j < nt; j++)
 		debug_buffer[idm*debug_buffer_nt + d + j] = w * buf[j];
@@ -129,7 +129,7 @@ void frb_simple_direct_search_algorithm::search_chunk(const float *chunk, int ic
 
 void frb_simple_direct_search_algorithm::search_end()
 {
-    assert(this->search_result > -1.0e30);
+    xassert(this->search_result > -1.0e30);
 }
 
 

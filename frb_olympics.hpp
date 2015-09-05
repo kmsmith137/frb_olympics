@@ -24,6 +24,11 @@
 #define HOST_NAME_MAX _POSIX_HOST_NAME_MAX
 #endif
 
+#ifndef xassert
+#define xassert(cond) xassert2(cond, __LINE__)
+#define xassert2(cond,line) do { if (!(cond)) throw std::runtime_error("Assertion '" __STRING(cond) "' failed (" __FILE__ ":" __STRING(line) ")"); } while (0)
+#endif
+
 namespace frb_olympics {
 #if 0
 } // emacs pacifier

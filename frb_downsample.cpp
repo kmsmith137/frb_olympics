@@ -29,11 +29,11 @@ frb_downsample_search::frb_downsample_search(const frb_search_params &p_, frb_se
     : frb_search_algorithm_base(p_), child(child_), nds(nds_)
 { 
     // more asserts could be added...
-    assert(nds >= 1);
-    assert(p.nsamples_per_chunk == child->p.nsamples_per_chunk * nds);
-    assert(p.nsamples_tot == child->p.nsamples_tot * nds);
-    assert(p.nchunks == child->p.nchunks);
-    assert(fabs(p.dt_sample - child->p.dt_sample/nds) < 1.0e-10*p.dt_sample);
+    xassert(nds >= 1);
+    xassert(p.nsamples_per_chunk == child->p.nsamples_per_chunk * nds);
+    xassert(p.nsamples_tot == child->p.nsamples_tot * nds);
+    xassert(p.nchunks == child->p.nchunks);
+    xassert(fabs(p.dt_sample - child->p.dt_sample/nds) < 1.0e-10*p.dt_sample);
 
     stringstream s;
     s << "downsample-" << nds << "-" << child->name;
@@ -85,8 +85,8 @@ frb_search_algorithm_base::ptr_t frb_downsample_search::create(const vector<stri
 
     int nds = xlexical_cast<int> (tokens[0], "downsample nds");
     
-    assert(nds >= 1);
-    assert(p.nsamples_per_chunk % nds == 0);
+    xassert(nds >= 1);
+    xassert(p.nsamples_per_chunk % nds == 0);
 
     frb_search_params child_search_params = p;
     child_search_params.nsamples_per_chunk = p.nsamples_per_chunk / nds;

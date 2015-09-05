@@ -31,16 +31,16 @@ struct frb_sampled_pulse {
 frb_sampled_pulse::frb_sampled_pulse(int nt_, double dt_, double t0_)
     : nt(nt_), dt(dt_), t0(t0_)
 {
-    assert(nt >= 2);
-    assert(dt > 0.0);
+    xassert(nt >= 2);
+    xassert(dt > 0.0);
     buf = shared_array<double> (new double[nt]);
     memset(buf.get(), 0, nt * sizeof(double));
 }
 
 void frb_sampled_pulse::downsample(int new_nt)
 {
-    assert(new_nt > 0);
-    assert(nt % new_nt == 0);
+    xassert(new_nt > 0);
+    xassert(nt % new_nt == 0);
 
     shared_array<double> new_buf = shared_array<double> (new double[new_nt]);
     memset(new_buf.get(), 0, new_nt * sizeof(double));
@@ -56,8 +56,8 @@ void frb_sampled_pulse::downsample(int new_nt)
 
 void frb_sampled_pulse::truncate(int new_nt)
 {
-    assert(new_nt > 0);
-    assert(new_nt <= nt);
+    xassert(new_nt > 0);
+    xassert(new_nt <= nt);
 
     shared_array<double> new_buf = shared_array<double> (new double[new_nt]);
     memcpy(new_buf.get(), buf.get(), new_nt * sizeof(double));
@@ -89,8 +89,8 @@ struct frb_pulse_fft {
 frb_pulse_fft::frb_pulse_fft(int nt_, double dt_, double t0_)
     : nt(nt_), dt(dt_), t0(t0_)
 {
-    assert(nt >= 2);
-    assert(dt > 0.0);
+    xassert(nt >= 2);
+    xassert(dt > 0.0);
     buf = shared_array<complex<double> > (new complex<double> [nt/2+1]);
     memset(buf.get(), 0, (nt/2+1) * sizeof(complex<double>));
 }
@@ -109,10 +109,10 @@ static inline complex<double> dispersion_fft(double kt)
 
 void frb_pulse_fft::fill_with_gaussian(double arrival_time, double fluence, double intrinsic_width)
 {
-    assert(arrival_time >= t0);
-    assert(arrival_time <= t0 + nt*dt);
-    assert(fluence > 0.0);
-    assert(intrinsic_width >= 0.0);
+    xassert(arrival_time >= t0);
+    xassert(arrival_time <= t0 + nt*dt);
+    xassert(fluence > 0.0);
+    xassert(intrinsic_width >= 0.0);
 
     double w = intrinsic_width;
     double t = arrival_time - t0;
@@ -175,13 +175,13 @@ frb_sampled_pulse frb_pulse_fft::fft()
 
     if (!p) {
 	p = reinterpret_cast<fftw_plan *> (fftw_malloc((max_rank+1) * sizeof(fftw_plan)));
-	assert(p != NULL);
+	xassert(p != NULL);
 	memset(p, 0, (max_rank+1) * sizeof(fftw_plan));
     }
 
     if (!p[rank]) {
 	p[rank] = fftw_plan_dft_c2r_1d(nt, src, dst, FFTW_ESTIMATE);
-	assert(p[rank] != NULL);
+	xassert(p[rank] != NULL);
     }
 
     fftw_execute_dft_c2r(p[rank], src, dst);
@@ -207,9 +207,9 @@ frb_sampled_pulse frb_pulse_fft::fft()
 //
 static frb_sampled_pulse make_pulse(const frb_pulse &p, double freq_lo_MHz, double freq_hi_MHz, int nt, double dt, double t0)
 {
-    assert(freq_lo_MHz <= freq_hi_MHz); 
-    assert(nt > 0);
-    assert(dt > 1.0e-4);
+    xassert(freq_lo_MHz <= freq_hi_MHz); 
+    xassert(nt > 0);
+    xassert(dt > 1.0e-4);
     
     // zero-pad by factor of two
     int nt_pad = round_up_to_power_of_two(2*nt);
@@ -250,10 +250,10 @@ frb_pulse::frb_pulse(double fluence_, double arrival_time_, double intrinsic_wid
       dispersion_measure(dispersion_measure_), 
       scattering_measure(scattering_measure_)
 {
-    assert(fluence > 0.0);
-    assert(intrinsic_width >= 0.0);
-    assert(dispersion_measure >= 0.0);
-    assert(scattering_measure >= 0.0);
+    xassert(fluence > 0.0);
+    xassert(intrinsic_width >= 0.0);
+    xassert(dispersion_measure >= 0.0);
+    xassert(scattering_measure >= 0.0);
 }
 
 
@@ -267,15 +267,15 @@ void frb_pulse::get_endpoints(double &t0, double &t1, double freq_lo_MHz, double
 
 void frb_pulse::add_to_timestream(double freq_lo_MHz, double freq_hi_MHz, float *timestream, int nsamples_per_chunk, double dt_sample, int ichunk) const
 {
-    assert(freq_lo_MHz <= freq_hi_MHz); 
-    assert(nsamples_per_chunk > 0);
-    assert(ichunk >= 0);
+    xassert(freq_lo_MHz <= freq_hi_MHz); 
+    xassert(nsamples_per_chunk > 0);
+    xassert(ichunk >= 0);
     
     double t0, t1;
     this->get_endpoints(t0, t1, freq_lo_MHz, freq_hi_MHz);
 
-    assert(t0 > 0.0);
-    assert(t0 < t1);
+    xassert(t0 > 0.0);
+    xassert(t0 < t1);
 
     // pulse endpoints in integer samples
     int i0 = (int)(t0 / dt_sample);
@@ -298,14 +298,14 @@ void frb_pulse::add_to_timestream(double freq_lo_MHz, double freq_hi_MHz, float 
 // FIXME still a little cut-and-paste with frb_pulse::add_to_timestream() to clean up
 double frb_pulse::get_signal_to_noise_in_channel(double freq_lo_MHz, double freq_hi_MHz, double dt_sample) const
 {
-    assert(freq_lo_MHz <= freq_hi_MHz);
-    assert(dt_sample > 1.0e-4);
+    xassert(freq_lo_MHz <= freq_hi_MHz);
+    xassert(dt_sample > 1.0e-4);
     
     double t0, t1;
     this->get_endpoints(t0, t1, freq_lo_MHz, freq_hi_MHz);
 
-    assert(t0 > 0.0);
-    assert(t0 < t1);
+    xassert(t0 > 0.0);
+    xassert(t0 < t1);
 
     // pulse endpoints in integer samples
     int i0 = (int)(t0 / dt_sample);
