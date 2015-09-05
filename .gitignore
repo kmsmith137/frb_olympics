@@ -7,6 +7,8 @@ write-pulse
 frb-compare
 frb-dump
 libfrb_olympics.so
+frb_olympics_c.cpp
+frb_olympics_c.so
 libfrb_notes.aux
 libfrb_notes.log
 libfrb_notes.pdf

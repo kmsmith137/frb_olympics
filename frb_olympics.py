@@ -1,6 +1,8 @@
 import sys
 import numpy as np
 
+from frb_olympics_c import frb_pulse
+
 
 class compare_run:
     def __init__(self, output_stem, algo_filename=None):

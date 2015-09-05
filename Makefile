@@ -17,7 +17,7 @@ EXE_NOINSTALL=test-rng write-pulse
 SCRIPT_INSTALL=frb-show-dump.py frb-compare-postprocess.py
 PY_INSTALL=frb_olympics.py
 
-all: libfrb_olympics.so $(EXE_INSTALL) $(EXE_NOINSTALL)
+all: libfrb_olympics.so frb_olympics_c.so $(EXE_INSTALL) $(EXE_NOINSTALL)
 
 %.o: %.cpp frb_olympics.hpp
 	$(CPP) -c -o $@ $<
@@ -28,6 +28,12 @@ all: libfrb_olympics.so $(EXE_INSTALL) $(EXE_NOINSTALL)
 
 libfrb_olympics.so: frb_misc.o frb_pulse.o frb_rng.o frb_search_algorithm_base.o frb_search_params.o frb_downsample.o frb_rechunk.o frb_simple_direct.o frb_sloth.o frb_simple_tree.o frb_bonsai.o
 	$(CPP) -o $@ -shared $^ -ljstree -lfftw3
+
+frb_olympics_c.cpp: frb_olympics_c.pyx _frb_olympics_c.pxd frb_olympics.hpp
+	cython --cplus $<
+
+frb_olympics_c.so: frb_olympics_c.cpp
+	$(CPP) -shared -o $@ $< -lfrb_olympics
 
 test-rng: test-rng.o libfrb_olympics.so
 	$(CPP) -o $@ $^
@@ -41,17 +47,19 @@ frb-compare: frb-compare.mo libfrb_olympics.so
 frb-dump: frb-dump.o libfrb_olympics.so
 	$(CPP) -o $@ $^ -lhdf5
 
-install: libfrb_olympics.so $(EXE_INSTALL)
+install: libfrb_olympics.so frb_olympics_c.so $(EXE_INSTALL)
 	cp -f frb_olympics.hpp $(INCDIR)/frb_olympics.hpp
 	cp -f libfrb_olympics.so $(LIBDIR)/libfrb_olympics.so
+	cp -f frb_olympics_c.so $(PYDIR)/frb_olympics_c.so
 	cp -f $(EXE_INSTALL) $(BINDIR)/
 	cp -f $(SCRIPT_INSTALL) $(BINDIR)/
 	cp -f $(PY_INSTALL) $(PYDIR)/
 
 clean:
-	rm -f *~ *.o *.mo *.so $(EXE_INSTALL) $(EXE_NOINSTALL)
+	rm -f *~ *.o *.mo *.so frb_olympics_c.cpp $(EXE_INSTALL) $(EXE_NOINSTALL)
 
 uninstall:
 	for f in $(EXE_INSTALL) $(SCRIPT_INSTALL); do rm -f $(BINDIR)/$$f; done
 	for f in $(PY_INSTALL); do rm -f $(PYDIR)/$$f; done
-	rm -f $(INCDIR)/frb_olympics.hpp $(LIBDIR)/libfrb_olympics.so
+	rm -f $(INCDIR)/frb_olympics.hpp $(LIBDIR)/libfrb_olympics.so $(PYDIR)/frb_olympics_c.so
+
