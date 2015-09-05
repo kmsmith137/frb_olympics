@@ -30,8 +30,9 @@ void tokenize_file(const string &filename, vector<vector<string> > &tokens)
     ifstream f(filename.c_str());
 
     if (f.fail()) {
-	cerr << "fatal: couldn't open file " << filename << "\n";
-	exit(1);
+	stringstream s;
+	s << ": couldn't open file " << filename << "\n";
+	throw runtime_error(s.str().c_str());
     }
 
     for (;;) {
@@ -66,21 +67,20 @@ void read_kv_pairs(const string &filename, boost::unordered_map<string,string> &
 
     for (unsigned int i = 0; i < tokens.size(); i++) {
 	if ((tokens[i].size() != 3) || (tokens[i][1] != "=")) {
-	    cerr << "fatal: parse error in " << filename << "\n"
-		 << "    every line must be of the form 'key = val' with spaces before and after the '='\n"
-		 << "    offending line:\n"
-		 << "        ";
+	    stringstream s;
+
+	    s << filename << ": parse error in line:";
 
 	    for (unsigned int j = 0; j < tokens[i].size(); j++)
-		cerr << " " << tokens[i][j];
+		s << " " << tokens[i][j];
 
-	    cerr << "\n";
-	    exit(1);
+	    throw runtime_error(s.str().c_str());
 	}
 
 	if (kv_pairs.find(tokens[i][0]) != kv_pairs.end()) {
-	    cerr << "fatal: key '" << tokens[i][0] << "' occurs twice in " << filename << "\n";
-	    exit(1);
+	    stringstream s;
+	    s << filename << ": key '" << tokens[i][0] << "' occurs twice";
+	    throw runtime_error(s.str().c_str());
 	}
 
 	kv_pairs[tokens[i][0]] = tokens[i][2];

@@ -15,8 +15,9 @@ template<typename T> inline T kv_extract(const string &filename, boost::unordere
     T ret;
 
     if (p == kv_pairs.end()) {
-	cerr << "Fatal: expected key '" << key << "' in " << filename << "\n";
-	exit(1);
+	stringstream s;
+	s << "Fatal: expected key '" << key << "' in " << filename << "\n";
+	throw runtime_error(s.str().c_str());
     }
 
     ret = xlexical_cast<T> (p->second, p->first);

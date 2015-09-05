@@ -87,18 +87,20 @@ frb_search_algorithm_base::ptr_t frb_search_algorithm_base::parse_line(const vec
     registry_t::iterator pp = registry.find(algo_name);
 
     if (pp == registry.end()) {
-	cerr << "fatal: search algorithm '" << algo_name << "' requested but not found in registry\n";
-	exit(1);
+	stringstream s;
+	s << "fatal: search algorithm '" << algo_name << "' requested but not found in registry\n";
+	throw runtime_error(s.str().c_str());
     }
 
     frb_search_algorithm_base::ptr_t ret = pp->second.creator(tokens, p);
     
     if (!ret) {
-	cerr << "parse error on line:";
+	stringstream s;
+	s << "parse error on line:";
 	for (unsigned int i = 0; i < tokens_.size(); i++)
-	    cerr << " " << tokens_[i];
-	cerr << "\n" << algo_name << " command-line syntax is:\n" << pp->second.usage;
-	exit(1);
+	    s << " " << tokens_[i];
+	s << "\n" << algo_name << " command-line syntax is:\n" << pp->second.usage;
+	throw runtime_error(s.str().c_str());
     }
 
     return ret;

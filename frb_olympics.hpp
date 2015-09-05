@@ -70,8 +70,9 @@ template<typename T> inline T xlexical_cast(const std::string &s, const std::str
     try {
 	return boost::lexical_cast<T>(s);
     } catch (...) {
-	std::cerr << prefix << ": fatal: couldn't parse token " << s << " (expected type: " << tname<T>() << ")\n";
-	exit(1);
+	std::stringstream s;
+	s << prefix << ": couldn't parse token " << s << " (expected type: " << tname<T>() << ")\n";
+	throw std::runtime_error(s.str().c_str());
     }
 }
 

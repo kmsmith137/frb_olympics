@@ -84,10 +84,8 @@ frb_simple_tree_search_algorithm::frb_simple_tree_search_algorithm(const frb_sea
 	
     cout << this->name << " initialized, tree_dm_min=" << tree_dm_min << ", tree_dm_max=" << tree_dm_max << endl;
 
-    if ((p.dm_min < tree_dm_min-0.1) || (p.dm_max > tree_dm_max+0.1)) {
-	cerr << "Fatal: DM range in search_params exceeds range searched by tree\n";
-	exit(1);
-    }
+    if ((p.dm_min < tree_dm_min-0.1) || (p.dm_max > tree_dm_max+0.1))
+	throw runtime_error("Fatal: DM range in search_params exceeds range searched by tree\n");
 }
 
 
@@ -296,11 +294,7 @@ frb_search_algorithm_base::ptr_t frb_simple_tree_search_algorithm::create(const 
     int ndm = xlexical_cast<int> (tokens[0], "simple_tree ndm");
     int nsquish = xlexical_cast<int> (tokens[1], "simple_tree nsquish");
 
-    if (!is_power_of_two(ndm)) {
-	cerr << "simple_tree: expected ndm to be a power of two (got ndm=" << ndm << ")\n";
-	exit(1);
-    }
-
+    xassert(is_power_of_two(ndm));
     int depth = integer_log2(ndm);
     return boost::make_shared<frb_simple_tree_search_algorithm>(p, depth, nsquish);
 }

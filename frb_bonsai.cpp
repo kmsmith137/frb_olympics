@@ -178,8 +178,9 @@ frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const frb_search_params
 
     double tree_dm_max = (ntree-1) / dm1_index;
     if (p.dm_max > tree_dm_max) {
-	cerr << "bonsai: max DM in paramfile (=" << p.dm_max << ") exceeds max DM of tree (=" << tree_dm_max << ")\n";
-	exit(1);
+	stringstream s;
+	s << "bonsai: max DM in paramfile (=" << p.dm_max << ") exceeds max DM of tree (=" << tree_dm_max << ")\n";
+	throw runtime_error(s.str().c_str());
     }
 
     // 
@@ -463,11 +464,7 @@ frb_search_algorithm_base::ptr_t frb_bonsai_search_algorithm::create(const vecto
 	return frb_search_algorithm_base::ptr_t();
 
     int ntree = xlexical_cast<int> (tokens[0], "bonsai ntree");
-
-    if (!is_power_of_two(ntree)) {
-	cerr << "bonsai: expected ntree to be a power of two (got ntree=" << ntree << ")\n";
-	exit(1);
-    }
+    xassert(is_power_of_two(ntree));
 
     int depth = integer_log2(ntree);
     return boost::make_shared<frb_bonsai_search_algorithm>(p, depth, nups);
