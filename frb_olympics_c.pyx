@@ -3,6 +3,38 @@ cimport numpy as np
 cimport _frb_olympics_c
 
 
+cdef class frb_rng:
+    cdef _frb_olympics_c.frb_rng *_rng
+
+    def __cinit__(self):
+        self._rng = NULL
+
+    def __init__(self, *args):
+        if len(args) == 0:
+            self._rng = new _frb_olympics_c.frb_rng()
+        elif len(args) == 1:
+            self._construct_from_rng(args[0])
+        else:
+            raise RuntimeError('frb_rng constructor syntax is either frb_rng() or frb_rng(existing_rng)')
+
+    def _construct_from_rng(self, frb_rng r):
+        assert r._rng != NULL
+        self._rng = new _frb_olympics_c.frb_rng(r._rng[0])
+
+    def __dealloc__(self):
+        if self._rng != NULL:
+            del self._rng
+            self._rng = NULL
+
+    def uniform(self, lo, hi):
+        assert self._rng != NULL
+        return self._rng.uniform(lo, hi)
+
+    def gaussian(self):
+        assert self._rng != NULL
+        return self._rng.gaussian()
+
+
 cdef class frb_pulse:
     cdef _frb_olympics_c.frb_pulse *_pulse
 

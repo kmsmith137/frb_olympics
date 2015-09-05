@@ -1,4 +1,11 @@
 cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
+    cdef cppclass frb_rng:
+        frb_rng() except +
+        frb_rng(frb_rng &) except +
+
+        double uniform(double lo, double hi) except +
+        double gaussian() except +
+
 
     cdef cppclass frb_pulse:
         frb_pulse(double fluence, double arrival_time, double intrinsic_width,

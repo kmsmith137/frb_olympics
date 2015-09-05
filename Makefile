@@ -32,8 +32,8 @@ libfrb_olympics.so: frb_misc.o frb_pulse.o frb_rng.o frb_search_algorithm_base.o
 frb_olympics_c.cpp: frb_olympics_c.pyx _frb_olympics_c.pxd frb_olympics.hpp
 	cython --cplus $<
 
-frb_olympics_c.so: frb_olympics_c.cpp
-	$(CPP) -shared -o $@ $< -lfrb_olympics
+frb_olympics_c.so: frb_olympics_c.cpp libfrb_olympics.so
+	$(CPP) -shared -o $@ $< -L. -lfrb_olympics
 
 test-rng: test-rng.o libfrb_olympics.so
 	$(CPP) -o $@ $^
