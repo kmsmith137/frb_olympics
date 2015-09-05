@@ -7,6 +7,9 @@ import numpy as np
 from frb_olympics_c import frb_rng, frb_pulse, frb_search_params, \
     simple_direct, simple_tree, sloth, bonsai
 
+# Alex Josephy FDMT code
+from frb_fdmt import fdmt
+
 # the downsample search "algorithm", which just wraps
 # another search algorithm and runs it at lower time sampling
 from frb_downsample import downsample
