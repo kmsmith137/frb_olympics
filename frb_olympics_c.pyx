@@ -122,12 +122,14 @@ cdef class frb_search_params:
         self._params = NULL
 
     def __init__(self, *args):
-        if len(args) != 1:
-            raise RuntimeError("allowed constructor syntaxes are: frb_search_params(filename) or frb_search_params(existing_params)")
-        if isinstance(args[0], basestring):
+        if (len(args)==1) and (args[0] is None):
+            return   # hack for frb_search_algorithm_base.
+        elif (len(args)==1) and isinstance(args[0], basestring):
             self._construct_from_filename(args[0])
-        else:
+        elif (len(args)==1) and isinstance(args[0], frb_search_params):
             self._construct_from_existing_params(args[0])
+        else:
+            raise RuntimeError("allowed constructor syntaxes are: frb_search_params(filename) or frb_search_params(existing_params)")
 
     def _construct_from_filename(self, string filename):
         self._params = new _frb_olympics_c.frb_search_params(filename)
@@ -135,7 +137,6 @@ cdef class frb_search_params:
     def _construct_from_existing_params(self, frb_search_params p):
         assert p._params != NULL
         self._params = new _frb_olympics_c.frb_search_params(p._params[0])
-
 
     def __dealloc__(self):
         if self._params != NULL:
@@ -301,3 +302,105 @@ cdef class frb_search_params:
         def __set__(self, x):
             assert self._params != NULL
             self._params.nchunks = <int> x
+
+
+cdef class frb_search_algorithm_base:
+    cdef _frb_olympics_c.frb_search_algorithm_base *_p
+
+    def __cinit__(self):
+        self._p = NULL
+
+    def __dealloc__(self):
+        if self._p != NULL:
+            del self._p
+            self._p = NULL
+
+    def search_start(self):
+        assert self._p != NULL
+        self._p.search_start()
+
+    def _search_chunk1(self, np.ndarray[float,ndim=2,mode='c'] chunk not None, int ichunk):
+        self._p.search_chunk(&chunk[0,0], ichunk, NULL)
+
+    def _search_chunk2(self, np.ndarray[float,ndim=2,mode='c'] chunk not None, int ichunk, np.ndarray[float,ndim=2,mode='c'] debug_buffer not None):
+        self._p.search_chunk(&chunk[0,0], ichunk, &debug_buffer[0,0])
+
+    def search_chunk(self, chunk, ichunk, debug_buffer=None):
+        assert self._p != NULL
+        if debug_buffer is None:
+            self._search_chunk1(chunk, ichunk)
+        else:
+            self._search_chunk2(chunk, ichunk, debug_buffer)
+
+    def search_end(self):
+        assert self._p != NULL
+        self._p.search_end()
+
+
+    property search_params:
+        def __get__(self):
+            assert self._p != NULL
+            cdef _frb_olympics_c.frb_search_params *sp = new _frb_olympics_c.frb_search_params(self._p[0].p)
+            ret = frb_search_params(None)
+            ret._params = sp
+            return ret
+
+    property name:
+        def __get__(self):
+            assert self._p != NULL
+            return self._p.name
+
+    property debug_buffer_ndm:
+        def __get__(self):
+            assert self._p != NULL
+            return self._p.debug_buffer_ndm
+
+    property debug_buffer_nt:
+        def __get__(self):
+            assert self._p != NULL
+            return self._p.debug_buffer_nt
+
+    property search_gb:
+        def __get__(self):
+            assert self._p != NULL
+            return self._p.search_gb
+
+    property search_result:
+        def __get__(self):
+            assert self._p != NULL
+            return self._p.search_result
+        def __set__(self, x):
+            assert self._p != NULL
+            self._p.search_result = <double> x
+
+
+def simple_direct(frb_search_params p, epsilon):
+    assert p._params != NULL
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_direct(p._params[0], epsilon)
+    ret = frb_search_algorithm_base()
+    ret._p = ap
+    return ret
+
+
+def simple_tree(frb_search_params p, depth, nsquish):
+    assert p._params != NULL
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_tree(p._params[0], depth, nsquish)
+    ret = frb_search_algorithm_base()
+    ret._p = ap
+    return ret
+
+
+def sloth(frb_search_params p, epsilon, nupsample=1):
+    assert p._params != NULL
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth(p._params[0], epsilon, nupsample)
+    ret = frb_search_algorithm_base()
+    ret._p = ap
+    return ret
+
+
+def bonsai(frb_search_params p, depth, nupsample=1):
+    assert p._params != NULL
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(p._params[0], depth, nupsample)
+    ret = frb_search_algorithm_base()
+    ret._p = ap
+    return ret

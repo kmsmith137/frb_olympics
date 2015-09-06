@@ -302,6 +302,13 @@ void frb_sloth_search_algorithm::search_end()
     deallocate(this->work_buf);
 }
 
+
+frb_search_algorithm_base *sloth(const frb_search_params &p, double epsilon, int noversample)
+{
+    return new frb_sloth_search_algorithm(p, epsilon, noversample);
+}
+
+
 // Registry boilerplate follows
 
 // static member function

@@ -132,6 +132,11 @@ void frb_simple_direct_search_algorithm::search_end()
     xassert(this->search_result > -1.0e30);
 }
 
+frb_search_algorithm_base *simple_direct(const frb_search_params &p, double epsilon)
+{
+    return new frb_simple_direct_search_algorithm(p, epsilon);
+}
+
 
 // Registry boilerplate follows
 

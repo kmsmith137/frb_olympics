@@ -29,7 +29,7 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
 
 
     cdef cppclass frb_search_params:
-        frb_search_params(frb_search_params &) except +
+        frb_search_params(const frb_search_params &) except +
         frb_search_params(string &filename) except +
 
         double  dm_min, dm_max
@@ -51,3 +51,21 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
         void       simulate_noise(frb_rng &r, float *timestream) except +
         void       add_pulse(frb_pulse &pulse, float *timestream, int ichunk) except +
         double     get_signal_to_noise_of_pulse(frb_pulse &pulse) except +
+
+
+    cdef cppclass frb_search_algorithm_base:
+        frb_search_params  p
+        string             name
+        int                debug_buffer_ndm
+        int                debug_buffer_nt
+        float              search_gb
+        float              search_result
+
+        void   search_start() except +
+        void   search_chunk(const float *chunk, int ichunk, float *debug_buffer) except +
+        void   search_end() except +
+
+    cdef frb_search_algorithm_base *simple_direct(const frb_search_params &p, double epsilon) except +
+    cdef frb_search_algorithm_base *simple_tree(const frb_search_params &p, int depth, int nsquish) except +
+    cdef frb_search_algorithm_base *sloth(const frb_search_params &p, double epsilon, int nupsample) except +
+    cdef frb_search_algorithm_base *bonsai(const frb_search_params &p, int depth, int nupsample) except +

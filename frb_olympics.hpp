@@ -266,6 +266,14 @@ struct frb_search_algorithm_base : boost::noncopyable
     static void   read_file(const std::string &filename, const frb_search_params &p, std::vector<ptr_t> &algo_list);
 };
 
+
+// Algorithms
+extern frb_search_algorithm_base *simple_direct(const frb_search_params &p, double epsilon);
+extern frb_search_algorithm_base *simple_tree(const frb_search_params &p, int depth, int nsquish);
+extern frb_search_algorithm_base *sloth(const frb_search_params &p, double epsilon, int nupsample);
+extern frb_search_algorithm_base *bonsai(const frb_search_params &p, int depth, int nupsample);
+
+
 }  // namespace frb_olympics
 
 

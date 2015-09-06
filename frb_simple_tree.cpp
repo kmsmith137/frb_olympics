@@ -282,6 +282,11 @@ void frb_simple_tree_search_algorithm::search_end()
     }
 }
 
+frb_search_algorithm_base *simple_tree(const frb_search_params &p, int depth, int nsquish)
+{
+    return new frb_simple_tree_search_algorithm(p, depth, nsquish);
+}
+
 
 // Registry boilerplate follows
 

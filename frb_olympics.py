@@ -1,7 +1,8 @@
 import sys
 import numpy as np
 
-from frb_olympics_c import frb_rng, frb_pulse, frb_search_params
+from frb_olympics_c import frb_rng, frb_pulse, frb_search_params, \
+    simple_direct, simple_tree, sloth, bonsai
 
 
 class compare_run:

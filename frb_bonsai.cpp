@@ -439,6 +439,12 @@ void frb_bonsai_search_algorithm::run_unit_tests() const
     cout << "    test_weights: pass (depth=" << depth << ", nchan=" << nchan << ", nups=" << nups << ")" << endl;
 }
 
+frb_search_algorithm_base *bonsai(const frb_search_params &p, int depth, int nupsample)
+{
+    return new frb_bonsai_search_algorithm(p, depth, nupsample);
+}
+
+
 // Registry boilerplate follows
 
 static const char *usage = "    bonsai <ntree> [upsample NN]\n";
