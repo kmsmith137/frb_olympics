@@ -12,9 +12,9 @@
 #
 include Makefile.local
 
-EXE_INSTALL=frb-compare frb-dump
+EXE_INSTALL=frb-compare
 EXE_NOINSTALL=test-rng write-pulse
-SCRIPT_INSTALL=frb-show-dump.py frb-compare-postprocess.py
+SCRIPT_INSTALL=frb-dump.py frb-compare-postprocess.py
 PY_INSTALL=frb_olympics.py
 
 all: libfrb_olympics.so frb_olympics_c.so $(EXE_INSTALL) $(EXE_NOINSTALL)
@@ -43,9 +43,6 @@ write-pulse: write-pulse.o libfrb_olympics.so
 
 frb-compare: frb-compare.mo libfrb_olympics.so
 	$(MPICPP) -o $@ $^
-
-frb-dump: frb-dump.o libfrb_olympics.so
-	$(CPP) -o $@ $^ -lhdf5
 
 install: libfrb_olympics.so frb_olympics_c.so $(EXE_INSTALL)
 	cp -f frb_olympics.hpp $(INCDIR)/frb_olympics.hpp

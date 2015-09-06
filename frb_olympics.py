@@ -1,8 +1,33 @@
+import os
 import sys
 import numpy as np
 
 from frb_olympics_c import frb_rng, frb_pulse, frb_search_params, \
     simple_direct, simple_tree, sloth, bonsai
+
+
+algo_list = [ ]
+memhack_list = [ ]
+
+
+def add_algo(algo, memhack=1):
+    required_fields = [ 'name', 'debug_buffer_ndm', 'debug_buffer_nt', 'search_gb', 
+                        'search_start', 'search_chunk', 'search_end' ]
+
+    missing_fields = [ f for f in required_fields if not hasattr(algo,f) ]
+
+    if len(missing_fields) > 0:
+        raise RuntimeError('algorithm object is missing the following required fields: %s' % missing_fields)
+
+    assert isinstance(algo.name, basestring)
+    assert len(algo.name) > 0
+    assert algo.debug_buffer_ndm > 0
+    assert algo.debug_buffer_nt > 0
+    assert algo.search_gb >= 0.0
+    assert memhack >= 1
+
+    algo_list.append(algo)
+    memhack_list.append(memhack)
 
 
 class compare_run:
@@ -115,3 +140,17 @@ class compare_run:
             plt.savefig(filename)
             plt.clf()
             print >>sys.stderr, 'wrote', filename
+
+
+####################################################################################################
+#
+# Utility routines
+
+
+def imp(filename):
+    import imp
+    module_name = os.path.basename(filename)
+    module_name = module_name[:module_name.find('.')]
+    return imp.load_source(module_name, filename)
+
+

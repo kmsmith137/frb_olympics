@@ -320,9 +320,15 @@ cdef class frb_search_algorithm_base:
         self._p.search_start()
 
     def _search_chunk1(self, np.ndarray[float,ndim=2,mode='c'] chunk not None, int ichunk):
+        assert chunk.shape[0] == self.search_params.nchan
+        assert chunk.shape[1] == self.search_params.nsamples_per_chunk
         self._p.search_chunk(&chunk[0,0], ichunk, NULL)
 
     def _search_chunk2(self, np.ndarray[float,ndim=2,mode='c'] chunk not None, int ichunk, np.ndarray[float,ndim=2,mode='c'] debug_buffer not None):
+        assert chunk.shape[0] == self.search_params.nchan
+        assert chunk.shape[1] == self.search_params.nsamples_per_chunk
+        assert debug_buffer.shape[0] == self.debug_buffer_ndm
+        assert debug_buffer.shape[1] == self.debug_buffer_nt
         self._p.search_chunk(&chunk[0,0], ichunk, &debug_buffer[0,0])
 
     def search_chunk(self, chunk, ichunk, debug_buffer=None):
