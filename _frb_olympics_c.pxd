@@ -51,6 +51,7 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
         void       simulate_noise(frb_rng &r, float *timestream) except +
         void       add_pulse(frb_pulse &pulse, float *timestream, int ichunk) except +
         double     get_signal_to_noise_of_pulse(frb_pulse &pulse) except +
+        void       write() except +
 
 
     cdef cppclass frb_search_algorithm_base:

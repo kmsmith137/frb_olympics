@@ -183,6 +183,11 @@ cdef class frb_search_params:
         return self._params.get_signal_to_noise_of_pulse(p._pulse[0])
 
 
+    def write(self):
+        assert self._params != NULL
+        self._params.write()
+
+
     property dm_min:
         def __get__(self):
             assert self._params != NULL

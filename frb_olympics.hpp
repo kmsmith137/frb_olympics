@@ -193,6 +193,7 @@ struct frb_search_params {
     double  get_signal_to_noise_of_pulse(const frb_pulse &pulse) const;
 
     void write(std::ostream &os) const;
+    void write() const { this->write(std::cout); }
 
     inline double freq_lo_of_channel(int i) const
     { 
