@@ -2,9 +2,14 @@ import os
 import sys
 import numpy as np
 
-# cythonized stuff...
+# cython imports, including the search algorithms 
+#   { simple_direct, simple_tree, sloth, bonsai}
 from frb_olympics_c import frb_rng, frb_pulse, frb_search_params, \
     simple_direct, simple_tree, sloth, bonsai
+
+# the downsample search "algorithm", which just wraps
+# another search algorithm and runs it at lower time sampling
+from frb_downsample import downsample
 
 
 ####################################################################################################

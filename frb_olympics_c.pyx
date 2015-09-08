@@ -123,7 +123,7 @@ cdef class frb_search_params:
 
     def __init__(self, *args):
         if (len(args)==1) and (args[0] is None):
-            return   # hack for frb_search_algorithm_base.
+            return   # hack for frb_search_algorithm_base
         elif (len(args)==1) and isinstance(args[0], basestring):
             self._construct_from_filename(args[0])
         elif (len(args)==1) and isinstance(args[0], frb_search_params):
