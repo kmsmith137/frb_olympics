@@ -150,8 +150,6 @@ struct frb_bonsai_search_algorithm : public frb_search_algorithm_base
 
     void remap_channels(float *buf, const float *chunk) const;
     void run_unit_tests() const;
-
-    static frb_search_algorithm_base::ptr_t create(const vector<string> &tokens, const frb_search_params &p);
 };
 
 
@@ -442,48 +440,6 @@ void frb_bonsai_search_algorithm::run_unit_tests() const
 frb_search_algorithm_base *bonsai(const frb_search_params &p, int depth, int nupsample)
 {
     return new frb_bonsai_search_algorithm(p, depth, nupsample);
-}
-
-
-// Registry boilerplate follows
-
-static const char *usage = "    bonsai <ntree> [upsample NN]\n";
-
-// static member function
-frb_search_algorithm_base::ptr_t frb_bonsai_search_algorithm::create(const vector<string> &tokens_, const frb_search_params &p)
-{
-    vector<string> tokens = tokens_;
-    int nups = 1;
-
-    for (int i = 1; i < (int)tokens.size() - 1; i++) {
-	if (tokens[i] != string("upsample"))
-	    continue;
-
-	nups = xlexical_cast<int> (tokens[i+1], "bonsai nupsample");
-	xassert(nups >= 1);
-
-	tokens.erase(tokens.begin()+i, tokens.begin()+i+2);
-	break;
-    }
-
-    if (tokens.size() != 1)
-	return frb_search_algorithm_base::ptr_t();
-
-    int ntree = xlexical_cast<int> (tokens[0], "bonsai ntree");
-    xassert(is_power_of_two(ntree));
-
-    int depth = integer_log2(ntree);
-    return boost::make_shared<frb_bonsai_search_algorithm>(p, depth, nups);
-}
-
-// register tree algorithm at library load time
-namespace {
-    struct _initializer {
-	_initializer()
-	{
-	    frb_search_algorithm_base::register_algorithm("bonsai", frb_bonsai_search_algorithm::create, usage);
-	}
-    } _init;
 }
 
 

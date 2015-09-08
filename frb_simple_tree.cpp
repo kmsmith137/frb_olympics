@@ -40,8 +40,6 @@ struct frb_simple_tree_search_algorithm : public frb_search_algorithm_base
     virtual void  search_start();
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
-
-    static frb_search_algorithm_base::ptr_t create(const vector<string> &tokens, const frb_search_params &p);
 };
 
 
@@ -287,36 +285,5 @@ frb_search_algorithm_base *simple_tree(const frb_search_params &p, int depth, in
     return new frb_simple_tree_search_algorithm(p, depth, nsquish);
 }
 
-
-// Registry boilerplate follows
-
-// static member function
-frb_search_algorithm_base::ptr_t frb_simple_tree_search_algorithm::create(const vector<string> &tokens, const frb_search_params &p)
-{
-    if (tokens.size() != 2)
-	return frb_search_algorithm_base::ptr_t();
-
-    int ndm = xlexical_cast<int> (tokens[0], "simple_tree ndm");
-    int nsquish = xlexical_cast<int> (tokens[1], "simple_tree nsquish");
-
-    xassert(is_power_of_two(ndm));
-    int depth = integer_log2(ndm);
-    return boost::make_shared<frb_simple_tree_search_algorithm>(p, depth, nsquish);
-}
-
-static const char *usage = (
-"    simple_tree <ndm> <nsquish>\n"
-"       note that the downsampling factor is 2^nsquish\n"
-);
-
-// register tree algorithm at library load time
-namespace {
-    struct _initializer {
-	_initializer()
-	{
-	    frb_search_algorithm_base::register_algorithm("simple_tree", frb_simple_tree_search_algorithm::create, usage);
-	}
-    } _init;
-}
 
 }  // namespace frb_olympics

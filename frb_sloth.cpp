@@ -53,8 +53,6 @@ struct frb_sloth_search_algorithm : public frb_search_algorithm_base
     virtual void  search_start();
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
-
-    static frb_search_algorithm_base::ptr_t create(const vector<string> &tokens, const frb_search_params &p);
 };
 
 
@@ -306,35 +304,6 @@ void frb_sloth_search_algorithm::search_end()
 frb_search_algorithm_base *sloth(const frb_search_params &p, double epsilon, int noversample)
 {
     return new frb_sloth_search_algorithm(p, epsilon, noversample);
-}
-
-
-// Registry boilerplate follows
-
-// static member function
-frb_search_algorithm_base::ptr_t frb_sloth_search_algorithm::create(const vector<string> &tokens, const frb_search_params &p)
-{
-    if (tokens.size() != 2)
-	return frb_search_algorithm_base::ptr_t();
-
-    double epsilon = xlexical_cast<double> (tokens[0], "epsilon");
-    int noversample = xlexical_cast<int> (tokens[2], "noversample");
-
-    return boost::make_shared<frb_sloth_search_algorithm> (p, epsilon, noversample);
-}
- 
-static const char *usage = (
-"    sloth <epsilon1> <noversample>\n"
-"        note: in current implementation, sloth can't search to zero DM, so specify dm_min > 0.1!\n"
-);
-
-namespace {
-    struct _initializer {
-	_initializer()
-	{
-	    frb_search_algorithm_base::register_algorithm("sloth", frb_sloth_search_algorithm::create, usage);
-	}
-    } _init;
 }
 
 

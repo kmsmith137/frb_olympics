@@ -183,7 +183,7 @@ struct frb_search_params {
     // Construct from file (see frb_search_params.cpp for a description of file format)
     explicit frb_search_params(const std::string &filename);
     
-    // Arrival time will be randomly chosen so that 
+    // Arrival time will be randomly chosen so that entire pulse lies in timestream
     frb_pulse make_random_pulse(frb_rng &r, double fluence) const;
 
     // @timestream should point to a buffer of size nchan * nsamples_per_chunk
@@ -213,7 +213,6 @@ struct frb_search_params {
 struct frb_search_algorithm_base : boost::noncopyable
 {
     const frb_search_params p;
-    int memhack;   // =1 by default, can be changed in frb_search_algorithm_base::parse_line
 
     // Subclass constructor is responsible for initializing these
     std::string name;
@@ -223,7 +222,9 @@ struct frb_search_algorithm_base : boost::noncopyable
 
     float search_result;
 
-    frb_search_algorithm_base(const frb_search_params &p_);
+    frb_search_algorithm_base(const frb_search_params &p_)
+	: p(p_), name(), debug_buffer_ndm(0), debug_buffer_nt(0), search_gb(0.0)
+    { }
 
     virtual ~frb_search_algorithm_base() { }
 
@@ -245,26 +246,6 @@ struct frb_search_algorithm_base : boost::noncopyable
     virtual void  search_start() = 0;
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer) = 0;
     virtual void  search_end() = 0;
-    
-    //
-    // Algorithm registry (implemented as static member functions)
-    //
-    // Each subclass T should define a static member function
-    //   frb_search_algorithm_base::ptr_t create(const std::vector<std::string> &tokens, const frb_search_params &params);
-    //
-    // and call (at library load time)
-    //   frb_search_algorithm_base::register_algorithm("algo_name", T::create)
-    //
-    // See e.g. frb_sloth.cpp for the necessary boilerplate!
-    //
-
-    typedef boost::shared_ptr<frb_search_algorithm_base> ptr_t;
-    typedef ptr_t (*creator_t)(const std::vector<std::string> &, const frb_search_params &p);
-
-    static void   register_algorithm(const std::string &algo_name, creator_t f, const std::string &usage);
-    static void   show_algorithm_usage(std::ostream &os);
-    static ptr_t  parse_line(const std::vector<std::string> &tokens, const frb_search_params &p);
-    static void   read_file(const std::string &filename, const frb_search_params &p, std::vector<ptr_t> &algo_list);
 };
 
 

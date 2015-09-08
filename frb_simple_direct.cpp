@@ -28,8 +28,6 @@ struct frb_simple_direct_search_algorithm : public frb_search_algorithm_base
     virtual void  search_start();
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
-
-    static frb_search_algorithm_base::ptr_t create(const vector<string> &tokens, const frb_search_params &p);
 };
 
     
@@ -135,32 +133,6 @@ void frb_simple_direct_search_algorithm::search_end()
 frb_search_algorithm_base *simple_direct(const frb_search_params &p, double epsilon)
 {
     return new frb_simple_direct_search_algorithm(p, epsilon);
-}
-
-
-// Registry boilerplate follows
-
-static const char *usage = "    simple_direct <epsilon>\n";
-
-// static member function
-frb_search_algorithm_base::ptr_t frb_simple_direct_search_algorithm::create(const vector<string> &tokens, const frb_search_params &p)
-{
-    if (tokens.size() != 1)
-	return frb_search_algorithm_base::ptr_t();
-
-    double epsilon = xlexical_cast<double> (tokens[0], "epsilon");
-    return boost::make_shared<frb_simple_direct_search_algorithm>(p, epsilon);
-}
-
-
-// register simple_direct algorithm at library load time
-namespace {
-    struct _initializer {
-	_initializer()
-	{
-	    frb_search_algorithm_base::register_algorithm("simple_direct", frb_simple_direct_search_algorithm::create, usage);
-	}
-    } _init;
 }
 
 
