@@ -397,8 +397,8 @@ def simple_direct(epsilon):
     return ret
 
 
-def simple_tree(depth, nsquish):
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_tree(depth, nsquish)
+def simple_tree(ntree, ndownsample=1):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_tree(ntree, ndownsample)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret
@@ -411,8 +411,8 @@ def sloth(epsilon, nupsample=1):
     return ret
 
 
-def bonsai(depth, nupsample=1):
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(depth, nupsample)
+def bonsai(ntree, nupsample=1):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(ntree, nupsample)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret

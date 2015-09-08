@@ -68,6 +68,6 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
         void   search_end() except +
 
     cdef frb_search_algorithm_base *simple_direct(double epsilon) except +
-    cdef frb_search_algorithm_base *simple_tree(int depth, int nsquish) except +
+    cdef frb_search_algorithm_base *simple_tree(int ntree, int ndownsample) except +
     cdef frb_search_algorithm_base *sloth(double epsilon, int nupsample) except +
-    cdef frb_search_algorithm_base *bonsai(int depth, int nupsample) except +
+    cdef frb_search_algorithm_base *bonsai(int ntree, int nupsample) except +

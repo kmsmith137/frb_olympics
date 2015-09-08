@@ -252,9 +252,9 @@ struct frb_search_algorithm_base : boost::noncopyable
 
 // Algorithms
 extern frb_search_algorithm_base *simple_direct(double epsilon);
-extern frb_search_algorithm_base *simple_tree(int depth, int nsquish);
+extern frb_search_algorithm_base *simple_tree(int ntree, int ndownsample);
 extern frb_search_algorithm_base *sloth(double epsilon, int nupsample);
-extern frb_search_algorithm_base *bonsai(int depth, int nupsample);
+extern frb_search_algorithm_base *bonsai(int ntree, int nupsample);
 
 
 }  // namespace frb_olympics

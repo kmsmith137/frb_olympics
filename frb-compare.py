@@ -124,12 +124,12 @@ pulse_tab = frb_olympics.mpi_gather(pulse_tab)
 
 if frb_olympics.mpi_rank == 0:
     noise_data = np.concatenate(score_noise)
-    noise_filename = args.outstem + '_noise.txt'
+    noise_filename = output_stem + '_noise.txt'
     np.savetxt(noise_filename, noise_data)
     print 'wrote %s' % noise_filename
 
     pulse_data = np.concatenate((np.concatenate(pulse_tab), np.concatenate(score_pulse)), axis=1)
-    pulse_filename = args.outstem + '_pulse.txt'
+    pulse_filename = output_stem + '_pulse.txt'
 
     f = open(pulse_filename, 'w')
     print >>f, '# col 0: arrival time'
@@ -145,4 +145,4 @@ if frb_olympics.mpi_rank == 0:
     matplotlib.use('Agg')
 
     c = frb_olympics.comparison_outputs(noise_data, pulse_data)
-    c.plot_sigma(args.outstem)
+    c.plot_sigma(output_stem)

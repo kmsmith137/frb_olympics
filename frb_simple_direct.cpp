@@ -38,7 +38,7 @@ frb_simple_direct_search_algorithm::frb_simple_direct_search_algorithm(double ep
     xassert(epsilon > 0.0);
 
     stringstream s;
-    s << "simple_direct-" << epsilon; 
+    s << "simple-direct-" << epsilon; 
     this->name = s.str();
 }
 

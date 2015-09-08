@@ -108,12 +108,14 @@ int round_up_to_power_of_two(int n)
 
 int integer_log2(int n)
 {
-    xassert(is_power_of_two(n));
+    if (!is_power_of_two(n))
+	throw runtime_error("integer_log2 called with non-power-of-two argument");
 
     int ret = 0;
     while ((1 << ret) < n)
 	ret++;
 
+    xassert(n == (1 << ret));
     return ret;
 }
 

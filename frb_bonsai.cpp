@@ -140,7 +140,7 @@ struct frb_bonsai_search_algorithm : public frb_search_algorithm_base
     // shape-(ntree,nups) array containing relative weight for each (DM, subsample_phase) pair
     vector<double> weight_arr;
 
-    frb_bonsai_search_algorithm(int depth, int nups);
+    frb_bonsai_search_algorithm(int ntree, int nupsample);
 
     virtual ~frb_bonsai_search_algorithm() { }
 
@@ -154,14 +154,22 @@ struct frb_bonsai_search_algorithm : public frb_search_algorithm_base
 };
 
 
-frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(int depth_, int nups_)
-    : depth(depth_), ntree(1 << depth_), nups(nups_)
+frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(int ntree_, int nupsample_)
+    : dm1_index(0), dm1_delay(0), nchan(0)
 {
-    xassert(depth >= 1);
-    xassert(nups >= 1);
+    xassert((ntree_ > 0) && is_power_of_two(ntree_));
+    xassert(nupsample_ > 0);
+
+    depth = integer_log2(ntree_);
+    ntree = ntree_;
+    nups = nupsample_;
 
     stringstream s;
     s << "bonsai-" << ntree;
+
+    if (nups > 1)
+	s << "-ups" << nups;
+
     this->name = s.str();
 }
 
@@ -444,9 +452,9 @@ void frb_bonsai_search_algorithm::run_unit_tests() const
     cout << "    test_weights: pass (depth=" << depth << ", nchan=" << nchan << ", nups=" << nups << ")" << endl;
 }
 
-frb_search_algorithm_base *bonsai(int depth, int nupsample)
+frb_search_algorithm_base *bonsai(int ntree, int nupsample)
 {
-    return new frb_bonsai_search_algorithm(depth, nupsample);
+    return new frb_bonsai_search_algorithm(ntree, nupsample);
 }
 
 

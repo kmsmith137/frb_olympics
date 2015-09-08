@@ -28,7 +28,7 @@ struct frb_simple_tree_search_algorithm : public frb_search_algorithm_base
     int ring_t0;  // keeps track of position in ring buffer
     int nring;
 
-    frb_simple_tree_search_algorithm(int depth, int nsquish);
+    frb_simple_tree_search_algorithm(int ntree, int ndownsample);
     virtual ~frb_simple_tree_search_algorithm();
 
     // Helper functions for search_chunk
@@ -44,17 +44,23 @@ struct frb_simple_tree_search_algorithm : public frb_search_algorithm_base
 };
 
 
-frb_simple_tree_search_algorithm::frb_simple_tree_search_algorithm(int depth_, int nsquish_)
-    : depth(depth_), ndm(1 << depth_), nsquish(nsquish_), channel_freqs(0), dm_freqs(0),
-      output_normalization(0.0), tree_dm_min(0.0), tree_dm_max(0.0), dt_squished(0.0),
-      ndata_squished(0), ring_buffer(0), ring_t0(0), nring(0)
+frb_simple_tree_search_algorithm::frb_simple_tree_search_algorithm(int ntree_, int ndownsample_)
+    : channel_freqs(0), dm_freqs(0), output_normalization(0.0), tree_dm_min(0.0), tree_dm_max(0.0), 
+      dt_squished(0.0), ndata_squished(0), ring_buffer(0), ring_t0(0), nring(0)
 { 
-    xassert(depth >= 1);
-    xassert(nsquish >= 0);
-    xassert(nsquish <= 6);
+    xassert((ntree_ >= 2) && is_power_of_two(ntree_));
+    xassert((ndownsample_ >= 1) && is_power_of_two(ndownsample_));
+
+    depth = integer_log2(ntree_);
+    nsquish = integer_log2(ndownsample_);
+    ndm = ntree_;
 
     stringstream s;
-    s << "simple_tree-" << ndm << "-" << nsquish;
+    s << "simple-tree-" << ndm;
+
+    if (ndownsample_ > 1)
+	s << "-ds" << ndownsample_;
+
     this->name = s.str();
 }
 
@@ -292,9 +298,9 @@ void frb_simple_tree_search_algorithm::search_end()
     }
 }
 
-frb_search_algorithm_base *simple_tree(int depth, int nsquish)
+frb_search_algorithm_base *simple_tree(int ntree, int ndownsample)
 {
-    return new frb_simple_tree_search_algorithm(depth, nsquish);
+    return new frb_simple_tree_search_algorithm(ntree, ndownsample);
 }
 
 
