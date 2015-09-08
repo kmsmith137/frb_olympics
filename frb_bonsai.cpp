@@ -140,10 +140,11 @@ struct frb_bonsai_search_algorithm : public frb_search_algorithm_base
     // shape-(ntree,nups) array containing relative weight for each (DM, subsample_phase) pair
     vector<double> weight_arr;
 
-    frb_bonsai_search_algorithm(const frb_search_params &p, int depth, int nups);
+    frb_bonsai_search_algorithm(int depth, int nups);
 
     virtual ~frb_bonsai_search_algorithm() { }
 
+    virtual void  search_init(const frb_search_params &p);
     virtual void  search_start();
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
@@ -153,17 +154,23 @@ struct frb_bonsai_search_algorithm : public frb_search_algorithm_base
 };
 
 
-frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const frb_search_params &p, int depth_, int nups_)
-    : frb_search_algorithm_base(p), depth(depth_), ntree(1 << depth_), nups(nups_)
+frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(int depth_, int nups_)
+    : depth(depth_), ntree(1 << depth_), nups(nups_)
 {
     xassert(depth >= 1);
-    xassert(p.nchunks == 1);  // incremental search not implemented yet
     xassert(nups >= 1);
 
     stringstream s;
     s << "bonsai-" << ntree;
-
     this->name = s.str();
+}
+
+
+void frb_bonsai_search_algorithm::search_init(const frb_search_params &p)
+{
+    search_params = p;
+    xassert(p.nchunks == 1);  // incremental search not implemented yet
+
     this->debug_buffer_ndm = ntree;
     this->debug_buffer_nt = p.nsamples_tot * nups;
     this->search_gb = 1.0e-9 * (double)(ntree) * (double)(p.nsamples_tot) * (double)nups * sizeof(float);
@@ -266,8 +273,8 @@ frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const frb_search_params
 
 void frb_bonsai_search_algorithm::remap_channels(float *buf, const float *chunk) const
 {
-    int nt_wide = p.nsamples_per_chunk;
-    int nt_narrow = p.nsamples_per_chunk * nups;
+    int nt_wide = search_params.nsamples_per_chunk;
+    int nt_narrow = search_params.nsamples_per_chunk * nups;
 
     memset(buf, 0, ntree * nt_narrow * sizeof(float));
 
@@ -298,8 +305,8 @@ void frb_bonsai_search_algorithm::search_chunk(const float *chunk, int ichunk, f
     // incremental search not supported yet
     xassert(ichunk == 0);
 
-    int nt_narrow = p.nsamples_per_chunk * nups;
-    double dt_narrow = p.dt_sample / nups;
+    int nt_narrow = search_params.nsamples_per_chunk * nups;
+    double dt_narrow = search_params.dt_sample / nups;
 
     vector<float> buf(ntree*nt_narrow, 0.0);
 
@@ -307,8 +314,8 @@ void frb_bonsai_search_algorithm::search_chunk(const float *chunk, int ichunk, f
     do_tree_transform(&buf[0], depth, nt_narrow);
 
     // range of DM indices to be searched
-    int idm0 = (int)(p.dm_min * dm1_index);      // round down
-    int idm1 = (int)(p.dm_max * dm1_index) + 1;  // round up
+    int idm0 = (int)(search_params.dm_min * dm1_index);      // round down
+    int idm1 = (int)(search_params.dm_max * dm1_index) + 1;  // round up
 
     // loop over trial DM's, keeping in mind that the tree uses bit-reversed indexing
     for (int itree = 0; itree < ntree; itree++) {
@@ -319,7 +326,7 @@ void frb_bonsai_search_algorithm::search_chunk(const float *chunk, int ichunk, f
 	double dm = idm / dm1_index;
 
 	double t0, t1;
-	p.get_allowed_arrival_times(t0, t1, 0.0, dm, 0.0);
+	search_params.get_allowed_arrival_times(t0, t1, 0.0, dm, 0.0);
 
 	// convert to buffer indices (still floating-point though)
 	t0 = (t0 + dm * dm1_delay) / dt_narrow;
@@ -392,7 +399,7 @@ void frb_bonsai_search_algorithm::run_unit_tests() const
     
     // And now a ridiculously slow way to compute the weight_arr
 
-    int nt_wide = p.nsamples_per_chunk;
+    int nt_wide = search_params.nsamples_per_chunk;
     int nt_narrow = nt_wide * nups;
 
     vector<float> chunk(nchan * nt_wide);
@@ -437,9 +444,9 @@ void frb_bonsai_search_algorithm::run_unit_tests() const
     cout << "    test_weights: pass (depth=" << depth << ", nchan=" << nchan << ", nups=" << nups << ")" << endl;
 }
 
-frb_search_algorithm_base *bonsai(const frb_search_params &p, int depth, int nupsample)
+frb_search_algorithm_base *bonsai(int depth, int nupsample)
 {
-    return new frb_bonsai_search_algorithm(p, depth, nupsample);
+    return new frb_bonsai_search_algorithm(depth, nupsample);
 }
 
 

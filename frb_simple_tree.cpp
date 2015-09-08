@@ -28,7 +28,7 @@ struct frb_simple_tree_search_algorithm : public frb_search_algorithm_base
     int ring_t0;  // keeps track of position in ring buffer
     int nring;
 
-    frb_simple_tree_search_algorithm(const frb_search_params &p, int depth, int nsquish);
+    frb_simple_tree_search_algorithm(int depth, int nsquish);
     virtual ~frb_simple_tree_search_algorithm();
 
     // Helper functions for search_chunk
@@ -37,23 +37,32 @@ struct frb_simple_tree_search_algorithm : public frb_search_algorithm_base
     void postprocess_chunk_incremental(int ichunk, int idm, int it0, int it1, float *debug_buffer);
     void postprocess_chunk_non_incremental(float **buf, int idm, int it0, int it1, float *debug_buffer);
 
+    virtual void  search_init(const frb_search_params &p);
     virtual void  search_start();
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
 };
 
 
-frb_simple_tree_search_algorithm::frb_simple_tree_search_algorithm(const frb_search_params &p_, int depth_, int nsquish_)
-    : frb_search_algorithm_base(p_), depth(depth_), ndm(1 << depth_), nsquish(nsquish_)
+frb_simple_tree_search_algorithm::frb_simple_tree_search_algorithm(int depth_, int nsquish_)
+    : depth(depth_), ndm(1 << depth_), nsquish(nsquish_), channel_freqs(0), dm_freqs(0),
+      output_normalization(0.0), tree_dm_min(0.0), tree_dm_max(0.0), dt_squished(0.0),
+      ndata_squished(0), ring_buffer(0), ring_t0(0), nring(0)
 { 
     xassert(depth >= 1);
     xassert(nsquish >= 0);
     xassert(nsquish <= 6);
-    xassert(p.nsamples_per_chunk % (1 << nsquish) == 0);
 
     stringstream s;
     s << "simple_tree-" << ndm << "-" << nsquish;
     this->name = s.str();
+}
+
+
+void frb_simple_tree_search_algorithm::search_init(const frb_search_params &p)
+{
+    search_params = p;
+    xassert(p.nsamples_per_chunk % (1 << nsquish) == 0);
 
     this->channel_freqs = jstree::get_chime_channels(p.nchan, p.band_freq_lo_MHz, p.band_freq_hi_MHz);
     this->dm_freqs = jstree::get_dm_channels(this->depth, channel_freqs[0], channel_freqs[p.nchan-1]);
@@ -101,7 +110,7 @@ void frb_simple_tree_search_algorithm::search_start()
 {
     this->search_result = -1.0e30;
 
-    if (p.nchunks > 0) {
+    if (search_params.nchunks > 0) {
 	this->ring_t0 = 0;
 	this->nring = ndata_squished + ndm;
 	this->ring_buffer = jstree::matrix(ndm, nring);
@@ -135,7 +144,7 @@ float **frb_simple_tree_search_algorithm::dedisperse_chunk_incremental(float **b
 
 float **frb_simple_tree_search_algorithm::dedisperse_chunk_non_incremental(float **buf)
 {
-    xassert(p.nchunks == 1);
+    xassert(search_params.nchunks == 1);
 
     float **buf2 = jstree::matrix(ndm, ndata_squished);
     jstree::dedisperse(buf, buf2, ndm, ndata_squished);
@@ -180,7 +189,7 @@ void frb_simple_tree_search_algorithm::postprocess_chunk_incremental(int ichunk,
 
 void frb_simple_tree_search_algorithm::postprocess_chunk_non_incremental(float **buf, int idm, int it0, int it1, float *debug_buffer)
 {
-    xassert(p.nchunks == 1);
+    xassert(search_params.nchunks == 1);
     xassert(idm >= 0 && idm < ndm);
 
     // clamp
@@ -199,36 +208,39 @@ void frb_simple_tree_search_algorithm::postprocess_chunk_non_incremental(float *
 
 void frb_simple_tree_search_algorithm::search_chunk(const float *chunk, int ichunk, float *debug_buffer)
 {
-    float **data = jstree::matrix(p.nchan, p.nsamples_per_chunk);
-    for (int i = 0; i < p.nchan; i++)
-	for (int j = 0; j < p.nsamples_per_chunk; j++)
-	    data[i][j] = output_normalization * chunk[i*p.nsamples_per_chunk+j];   // Note output_normalization here
+    int nchan = search_params.nchan;
+    int ns = search_params.nsamples_per_chunk;
+
+    float **data = jstree::matrix(nchan, ns);
+    for (int i = 0; i < nchan; i++)
+	for (int j = 0; j < ns; j++)
+	    data[i][j] = output_normalization * chunk[i*ns+j];   // Note output_normalization here
 
     for (int isquish = 0; isquish < nsquish; isquish++) {
-	int ndata = p.nsamples_per_chunk / (1 << isquish);
-	float tsamp = p.dt_sample * (1 << isquish);
+	int ndata = ns / (1 << isquish);
+	float tsamp = search_params.dt_sample * (1 << isquish);
 
 	float **tmp = data;
-	data = jstree::time_squish_data(data, channel_freqs, p.nchan, ndata, tsamp, 0.0);   // no lagging in this version!
+	data = jstree::time_squish_data(data, channel_freqs, nchan, ndata, tsamp, 0.0);   // no lagging in this version!
 	free(tmp[0]); 
 	free(tmp);
     }
 
     float unused = 0.0;
-    float **buf = jstree::remap_data(ndata_squished, p.nchan, channel_freqs, depth, dt_squished, &unused, data);
+    float **buf = jstree::remap_data(ndata_squished, nchan, channel_freqs, depth, dt_squished, &unused, data);
     free(data[0]); 
     free(data);
 
     // At this point, buf is an array with shape (ndm, ndata_squished)
 
-    if (p.nchunks > 1)
+    if (search_params.nchunks > 1)
 	buf = this->dedisperse_chunk_incremental(buf);
     else
 	buf = this->dedisperse_chunk_non_incremental(buf);
 
     // This is the DM search range, shifted and normalized to output array indices
-    float dm0 = (p.dm_min - tree_dm_min) / (tree_dm_max - tree_dm_min) * (ndm-1);
-    float dm1 = (p.dm_max - tree_dm_min) / (tree_dm_max - tree_dm_min) * (ndm-1);
+    float dm0 = (search_params.dm_min - tree_dm_min) / (tree_dm_max - tree_dm_min) * (ndm-1);
+    float dm1 = (search_params.dm_max - tree_dm_min) / (tree_dm_max - tree_dm_min) * (ndm-1);
     
     // This is the integer range of DM indices to be searched
     int idm0 = max(0, int(dm0));         // round down
@@ -243,7 +255,7 @@ void frb_simple_tree_search_algorithm::search_chunk(const float *chunk, int ichu
 	// range so that the entire pulse lies within the simulated timestream.)
 	//
 	double t0, t1;
-	p.get_allowed_arrival_times(t0, t1, 0.0, dm, 0.0);
+	search_params.get_allowed_arrival_times(t0, t1, 0.0, dm, 0.0);
 	
 	//
 	// Detail: the times t0,t1 are undispersed arrival times, whereas the
@@ -256,7 +268,7 @@ void frb_simple_tree_search_algorithm::search_chunk(const float *chunk, int ichu
  	int it0 = int((t0+dt)/dt_squished);
 	int it1 = int((t1+dt)/dt_squished+2.0);
 
-	if (p.nchunks > 1)
+	if (search_params.nchunks > 1)
 	    this->postprocess_chunk_incremental(ichunk, idm, it0, it1, debug_buffer);
 	else
 	    this->postprocess_chunk_non_incremental(buf, idm, it0, it1, debug_buffer);
@@ -280,9 +292,9 @@ void frb_simple_tree_search_algorithm::search_end()
     }
 }
 
-frb_search_algorithm_base *simple_tree(const frb_search_params &p, int depth, int nsquish)
+frb_search_algorithm_base *simple_tree(int depth, int nsquish)
 {
-    return new frb_simple_tree_search_algorithm(p, depth, nsquish);
+    return new frb_simple_tree_search_algorithm(depth, nsquish);
 }
 
 

@@ -7,6 +7,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--sn', type=float, default=30.0)
 parser.add_argument('-o', '--outstem')
+parser.add_argument('search_params_txtfile')
 parser.add_argument('algo_pyfile')
 parser.add_argument('nmc_noise', type=int)
 parser.add_argument('nmc_pulse', type=int)
@@ -45,8 +46,10 @@ assert args.nmc_pulse % frb_olympics.mpi_size == 0
 nmc_noise_loc = nmc_noise_tot // frb_olympics.mpi_size
 nmc_pulse_loc = nmc_pulse_tot // frb_olympics.mpi_size
 
+
+search_params = frb_olympics.frb_search_params(args.search_params_txtfile)
 frb_olympics.imp(args.algo_pyfile)
-search_params = frb_olympics.algo_list[0].search_params    # XXX
+frb_olympics.init_algorithms(search_params)
 nalgo = len(frb_olympics.algo_list)
 
 print '--------------------  Search params  --------------------'

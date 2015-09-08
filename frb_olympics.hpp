@@ -179,7 +179,10 @@ struct frb_search_params {
     int     nsamples_tot;  // always equal to (nsamples_per_chunk * nchunks)
     int     nsamples_per_chunk;
     int     nchunks;
-    
+
+    // Default constructor needed temporarily in frb_search_algorithm_base
+    frb_search_params() { memset(this, 0, sizeof(*this)); }
+
     // Construct from file (see frb_search_params.cpp for a description of file format)
     explicit frb_search_params(const std::string &filename);
     
@@ -212,18 +215,20 @@ struct frb_search_params {
 
 struct frb_search_algorithm_base : boost::noncopyable
 {
-    const frb_search_params p;
-
-    // Subclass constructor is responsible for initializing these
+    // initialized in constructor
     std::string name;
+
+    // initialized in search_init()
+    frb_search_params search_params;
     int debug_buffer_ndm;
     int debug_buffer_nt;
     double search_gb;
 
+    // initialized in search_start()
     float search_result;
 
-    frb_search_algorithm_base(const frb_search_params &p_)
-	: p(p_), name(), debug_buffer_ndm(0), debug_buffer_nt(0), search_gb(0.0)
+    frb_search_algorithm_base()
+	: name(), search_params(), debug_buffer_ndm(0), debug_buffer_nt(0), search_gb(0.0), search_result(0.0)
     { }
 
     virtual ~frb_search_algorithm_base() { }
@@ -238,11 +243,7 @@ struct frb_search_algorithm_base : boost::noncopyable
     //
     // The virtual function search_estimate_gb() should return an estimate of the total buffer size in GB.
     //
-    // Some general issues to be aware of when writing subclasses:
-    //
-    //    - all times in libfrb are in milliseconds (e.g. the sampling rate frb_search_params::dt_sample), 
-    //      don't forget to convert to seconds if necessary!
-    //
+    virtual void  search_init(const frb_search_params &p) = 0;
     virtual void  search_start() = 0;
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer) = 0;
     virtual void  search_end() = 0;
@@ -250,10 +251,10 @@ struct frb_search_algorithm_base : boost::noncopyable
 
 
 // Algorithms
-extern frb_search_algorithm_base *simple_direct(const frb_search_params &p, double epsilon);
-extern frb_search_algorithm_base *simple_tree(const frb_search_params &p, int depth, int nsquish);
-extern frb_search_algorithm_base *sloth(const frb_search_params &p, double epsilon, int nupsample);
-extern frb_search_algorithm_base *bonsai(const frb_search_params &p, int depth, int nupsample);
+extern frb_search_algorithm_base *simple_direct(double epsilon);
+extern frb_search_algorithm_base *simple_tree(int depth, int nsquish);
+extern frb_search_algorithm_base *sloth(double epsilon, int nupsample);
+extern frb_search_algorithm_base *bonsai(int depth, int nupsample);
 
 
 }  // namespace frb_olympics

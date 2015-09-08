@@ -5,6 +5,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('-o', '--outfile', dest='outfile')
 parser.add_argument('-i', '--ialgo', type=int, default=0)
+parser.add_argument('search_params_txtfile')
 parser.add_argument('algo_pyfile')
 
 args = parser.parse_args()
@@ -19,14 +20,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import frb_olympics
 
+search_params = frb_olympics.frb_search_params(args.search_params_txtfile)
 frb_olympics.imp(args.algo_pyfile)
-
-if len(frb_olympics.algo_list) == 0:
-    print >>sys.stderr, "Fatal: algo file '%s' didn't call frb_olympics.add_algo()" % args.algo_pyfile
+frb_olympics.init_algorithms(search_params)
 
 assert 0 <= args.ialgo < len(frb_olympics.algo_list)
 algo = frb_olympics.algo_list[args.ialgo]
-search_params = algo.search_params
 
 print 'Debug buffer shape = (%d,%d)' % (algo.debug_buffer_ndm, algo.debug_buffer_nt)
 

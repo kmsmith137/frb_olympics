@@ -320,6 +320,11 @@ cdef class frb_search_algorithm_base:
             del self._p
             self._p = NULL
 
+    def search_init(self, frb_search_params search_params):
+        assert self._p != NULL
+        assert search_params._params != NULL
+        self._p.search_init(search_params._params[0])
+
     def search_start(self):
         assert self._p != NULL
         self._p.search_start()
@@ -351,7 +356,7 @@ cdef class frb_search_algorithm_base:
     property search_params:
         def __get__(self):
             assert self._p != NULL
-            cdef _frb_olympics_c.frb_search_params *sp = new _frb_olympics_c.frb_search_params(self._p[0].p)
+            cdef _frb_olympics_c.frb_search_params *sp = new _frb_olympics_c.frb_search_params(self._p[0].search_params)
             ret = frb_search_params(None)
             ret._params = sp
             return ret
@@ -385,33 +390,29 @@ cdef class frb_search_algorithm_base:
             self._p.search_result = <double> x
 
 
-def simple_direct(frb_search_params p, epsilon):
-    assert p._params != NULL
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_direct(p._params[0], epsilon)
+def simple_direct(epsilon):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_direct(epsilon)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret
 
 
-def simple_tree(frb_search_params p, depth, nsquish):
-    assert p._params != NULL
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_tree(p._params[0], depth, nsquish)
+def simple_tree(depth, nsquish):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_tree(depth, nsquish)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret
 
 
-def sloth(frb_search_params p, epsilon, nupsample=1):
-    assert p._params != NULL
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth(p._params[0], epsilon, nupsample)
+def sloth(epsilon, nupsample=1):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth(epsilon, nupsample)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret
 
 
-def bonsai(frb_search_params p, depth, nupsample=1):
-    assert p._params != NULL
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(p._params[0], depth, nupsample)
+def bonsai(depth, nupsample=1):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(depth, nupsample)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret

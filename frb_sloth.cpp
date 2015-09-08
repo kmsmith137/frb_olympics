@@ -46,32 +46,39 @@ struct frb_sloth_search_algorithm : public frb_search_algorithm_base
     //
     vector<double> weight_arr;
 
-    frb_sloth_search_algorithm(const frb_search_params &p, double epsilon, int noversample);
+    frb_sloth_search_algorithm(double epsilon, int noversample);
 
     virtual ~frb_sloth_search_algorithm() { }
 
+    virtual void  search_init(const frb_search_params &p);
     virtual void  search_start();
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
 };
 
 
-frb_sloth_search_algorithm::frb_sloth_search_algorithm(const frb_search_params &p_, double epsilon_, int noversample)
-    : frb_search_algorithm_base(p_), epsilon(epsilon_), novs(noversample)
+frb_sloth_search_algorithm::frb_sloth_search_algorithm(double epsilon_, int noversample)
+    : epsilon(epsilon_), novs(noversample), ndm(0), max_save_n(0), nwork(0)
 {
     xassert(epsilon > 0.0);
     xassert(noversample >= 1);
     xassert(noversample <= 16);      // surely unintentional
+
+    stringstream s;
+    s << "sloth-" << epsilon << "-" << noversample;
+    this->name = s.str();
+}
+
+
+void frb_sloth_search_algorithm::search_init(const frb_search_params &p)
+{
+    search_params = p;
 
     // FIXME current implementation numerically unstable as DM->0!
     if (p.dm_min < 0.1)
 	throw runtime_error("Currently, can't specify dm_min < 0.1 with sloth!");
 
     double ts = p.dt_sample;
-
-    stringstream s;
-    s << "sloth-" << epsilon << "-" << noversample;
-    this->name = s.str();
 
     p.make_dm_table(this->dm_table, epsilon);
     this->ndm = dm_table.size();
@@ -174,8 +181,8 @@ void frb_sloth_search_algorithm::search_start()
 
 void frb_sloth_search_algorithm::search_chunk(const float *chunk, int ichunk, float *debug_buffer)
 {
-    double ts = p.dt_sample;
-    int ns = p.nsamples_per_chunk;
+    double ts = search_params.dt_sample;
+    int ns = search_params.nsamples_per_chunk;
 
     //
     // The cumsum array will store the cumulative sum of the data (one
@@ -190,9 +197,9 @@ void frb_sloth_search_algorithm::search_chunk(const float *chunk, int ichunk, fl
     vector<float> cumsum_v(ncsum, 0.0);
     float *cumsum = &cumsum_v[0];
 
-    for (int ichan = 0; ichan < p.nchan; ichan++) {
-	double nu_lo = p.freq_lo_of_channel(ichan);
-	double nu_hi = p.freq_hi_of_channel(ichan);
+    for (int ichan = 0; ichan < search_params.nchan; ichan++) {
+	double nu_lo = search_params.freq_lo_of_channel(ichan);
+	double nu_hi = search_params.freq_hi_of_channel(ichan);
 
 	//
 	// Fill cumsum, including sentinel values
@@ -266,7 +273,7 @@ void frb_sloth_search_algorithm::search_chunk(const float *chunk, int ichunk, fl
 
 	// Which of the finalized entries correpond to allowed arrival times?
 	double t0, t1;
-	p.get_allowed_arrival_times(t0, t1, 0.0, dm_table[idm], 0.0);
+	search_params.get_allowed_arrival_times(t0, t1, 0.0, dm_table[idm], 0.0);
 	
 	// Convert to oversampled units, relative to start of work buffer
 	t0 = novs * (t0/ts - ichunk*ns) - save_i0[idm];
@@ -301,9 +308,9 @@ void frb_sloth_search_algorithm::search_end()
 }
 
 
-frb_search_algorithm_base *sloth(const frb_search_params &p, double epsilon, int noversample)
+frb_search_algorithm_base *sloth(double epsilon, int noversample)
 {
-    return new frb_sloth_search_algorithm(p, epsilon, noversample);
+    return new frb_sloth_search_algorithm(epsilon, noversample);
 }
 
 

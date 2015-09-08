@@ -119,26 +119,42 @@ def imp(filename):
 
 algo_list = [ ]
 memhack_list = [ ]
+ini_flag = False
 
 
 def add_algo(algo, memhack=1):
-    required_fields = [ 'name', 'debug_buffer_ndm', 'debug_buffer_nt', 'search_gb', 
-                        'search_start', 'search_chunk', 'search_end' ]
-
-    missing_fields = [ f for f in required_fields if not hasattr(algo,f) ]
-
-    if len(missing_fields) > 0:
-        raise RuntimeError('algorithm object is missing the following required fields: %s' % missing_fields)
-
-    assert isinstance(algo.name, basestring)
-    assert len(algo.name) > 0
-    assert algo.debug_buffer_ndm > 0
-    assert algo.debug_buffer_nt > 0
-    assert algo.search_gb >= 0.0
     assert memhack >= 1
-
     algo_list.append(algo)
     memhack_list.append(memhack)
+
+
+def init_algorithms(search_params):
+    global ini_flag
+
+    if ini_flag:
+        raise RuntimeError('double call to frb_olympics.init_algorithms()')
+
+    assert len(algo_list) > 0
+
+    for algo in algo_list:
+        algo.search_init(search_params)
+
+        required_fields = [ 'name', 'search_params', 'debug_buffer_ndm', 
+                            'debug_buffer_nt', 'search_gb', 'search_init', 
+                            'search_start', 'search_chunk', 'search_end' ]
+
+        missing_fields = [ f for f in required_fields if not hasattr(algo,f) ]
+
+        if len(missing_fields) > 0:
+            raise RuntimeError('algorithm object is missing the following required fields: %s' % missing_fields)
+
+        assert isinstance(algo.name, basestring)
+        assert len(algo.name) > 0
+        assert algo.debug_buffer_ndm > 0
+        assert algo.debug_buffer_nt > 0
+        assert algo.search_gb >= 0.0
+
+    ini_flag = True
 
 
 def enumerate_algorithms_with_memhack(bracket_search=True):

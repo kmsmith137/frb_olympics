@@ -22,24 +22,31 @@ struct frb_simple_direct_search_algorithm : public frb_search_algorithm_base
     int min_it0;
     int max_it1;
 
-    frb_simple_direct_search_algorithm(const frb_search_params &p, double epsilon);
+    frb_simple_direct_search_algorithm(double epsilon);
     virtual ~frb_simple_direct_search_algorithm() { }
 
+    virtual void  search_init(const frb_search_params &p);
     virtual void  search_start();
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
 };
 
     
-frb_simple_direct_search_algorithm::frb_simple_direct_search_algorithm(const frb_search_params &p_, double epsilon_)
-    : frb_search_algorithm_base(p_), epsilon(epsilon_)
+frb_simple_direct_search_algorithm::frb_simple_direct_search_algorithm(double epsilon_)
+    : epsilon(epsilon_), ndm(0), min_it0(0), max_it1(0)
 {
     xassert(epsilon > 0.0);
-    xassert(p.nchunks == 1);   // incremental search not implemented
 
     stringstream s;
     s << "simple_direct-" << epsilon; 
     this->name = s.str();
+}
+
+
+void frb_simple_direct_search_algorithm::search_init(const frb_search_params &p)
+{
+    search_params = p;
+    xassert(p.nchunks == 1);   // incremental search not implemented
 
     p.make_dm_table(this->dm_table, epsilon);
     this->ndm = dm_table.size();
@@ -83,7 +90,7 @@ void frb_simple_direct_search_algorithm::search_chunk(const float *chunk, int ic
     // incremental search not supported
     xassert(ichunk == 0);
 
-    float w = 1.0 / sqrt(p.nchan);
+    float w = 1.0 / sqrt(search_params.nchan);
 
     vector<float> buf_v(max_it1-min_it0, 0.0);
     float *buf = &buf_v[0];
@@ -96,15 +103,15 @@ void frb_simple_direct_search_algorithm::search_chunk(const float *chunk, int ic
 	int nt = it1-it0;
 	memset(buf, 0, nt * sizeof(buf[0]));
 
-	for (int ichan = 0; ichan < p.nchan; ichan++) {
-	    double nu = (p.freq_lo_of_channel(ichan) + p.freq_hi_of_channel(ichan)) / 2.;
-	    int d = it0 + (int)(dispersion_delay(dm,nu) / p.dt_sample);   // d = offset between buf and channel timestream
-	    int s = ichan * p.nsamples_per_chunk + d;                     // s = offset between buf and chunk
+	for (int ichan = 0; ichan < search_params.nchan; ichan++) {
+	    double nu = (search_params.freq_lo_of_channel(ichan) + search_params.freq_hi_of_channel(ichan)) / 2.;
+	    int d = it0 + (int)(dispersion_delay(dm,nu) / search_params.dt_sample);   // d = offset between buf and channel timestream
+	    int s = ichan * search_params.nsamples_per_chunk + d;                     // s = offset between buf and chunk
 
 	    xassert(d >= 0);
-	    xassert(d+nt <= p.nsamples_per_chunk);
+	    xassert(d+nt <= search_params.nsamples_per_chunk);
 	    //int j0 = max(-d, 0);                                          // j0 = initial offset in buf
-	    //int j1 = min(p.nsamples_per_chunk - d, nt);                   // j1 = final offset in buf
+	    //int j1 = min(search_params.nsamples_per_chunk - d, nt);       // j1 = final offset in buf
 
 	    for (int j = 0; j < nt; j++)
 		buf[j] += chunk[s+j];
@@ -130,9 +137,9 @@ void frb_simple_direct_search_algorithm::search_end()
     xassert(this->search_result > -1.0e30);
 }
 
-frb_search_algorithm_base *simple_direct(const frb_search_params &p, double epsilon)
+frb_search_algorithm_base *simple_direct(double epsilon)
 {
-    return new frb_simple_direct_search_algorithm(p, epsilon);
+    return new frb_simple_direct_search_algorithm(epsilon);
 }
 
 
