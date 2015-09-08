@@ -123,26 +123,29 @@ pulse_tab = frb_olympics.mpi_gather(pulse_tab)
 
 
 if frb_olympics.mpi_rank == 0:
-    noise_data = np.concatenate(score_noise)
-    noise_filename = output_stem + '_noise.txt'
-    np.savetxt(noise_filename, noise_data)
-    print 'wrote %s' % noise_filename
+    if nmc_noise_tot > 0:
+        noise_data = np.concatenate(score_noise)
+        noise_filename = output_stem + '_noise.txt'
+        np.savetxt(noise_filename, noise_data)
+        print 'wrote %s' % noise_filename
 
-    pulse_data = np.concatenate((np.concatenate(pulse_tab), np.concatenate(score_pulse)), axis=1)
-    pulse_filename = output_stem + '_pulse.txt'
+    if nmc_pulse_tot > 0:
+        pulse_data = np.concatenate((np.concatenate(pulse_tab), np.concatenate(score_pulse)), axis=1)
+        pulse_filename = output_stem + '_pulse.txt'
 
-    f = open(pulse_filename, 'w')
-    print >>f, '# col 0: arrival time'
-    print >>f, '# col 1: intrinsic width'
-    print >>f, '# col 2: dispersion measure'
-    print >>f, '# col 3: scattering measure'
-    print >>f, '# col 4: spectral index'
+        f = open(pulse_filename, 'w')
+        print >>f, '# col 0: arrival time'
+        print >>f, '# col 1: intrinsic width'
+        print >>f, '# col 2: dispersion measure'
+        print >>f, '# col 3: scattering measure'
+        print >>f, '# col 4: spectral index'
 
-    np.savetxt(f, pulse_data)
-    print 'wrote %s' % pulse_filename
+        np.savetxt(f, pulse_data)
+        print 'wrote %s' % pulse_filename
+    
+    if (nmc_noise_tot >= 2) and (nmc_pulse_tot >= 1):
+        import matplotlib
+        matplotlib.use('Agg')
 
-    import matplotlib
-    matplotlib.use('Agg')
-
-    c = frb_olympics.comparison_outputs(noise_data, pulse_data)
-    c.plot_sigma(output_stem)
+        c = frb_olympics.comparison_outputs(noise_data, pulse_data)
+        c.plot_sigma(output_stem)

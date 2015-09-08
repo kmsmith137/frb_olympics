@@ -195,6 +195,8 @@ class comparison_outputs:
         assert noise_data.ndim == 2
         assert pulse_data.ndim == 2
         assert pulse_data.shape[1] == noise_data.shape[1] + 5
+        assert noise_data.shape[0] >= 2
+        assert pulse_data.shape[1] >= 1
 
         self.noise_data = noise_data
         self.nnoise = self.noise_data.shape[0]
