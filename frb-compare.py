@@ -5,6 +5,7 @@ import sys
 import argparse
 
 parser = argparse.ArgumentParser()
+parser.add_argument('-N', '--add-noise-to-pulse-sims', dest='add_noise', action='store_true')
 parser.add_argument('--sn', type=float, default=30.0)
 parser.add_argument('-o', '--outstem')
 parser.add_argument('search_params_txtfile')
@@ -102,13 +103,20 @@ for ipulse in xrange(nmc_pulse_loc):
     pulse_tab[ipulse,2] = p.dispersion_measure
     pulse_tab[ipulse,3] = p.scattering_measure
     pulse_tab[ipulse,4] = p.spectral_index
+    rsave = frb_olympics.frb_rng(rng)    
 
     for (ialgo, algo) in frb_olympics.enumerate_algorithms_with_memhack():
+        rng = frb_olympics.frb_rng(rsave)
         t0 = time.time()
 
         for ichunk in xrange(search_params.nchunks):
             print '    %s: starting chunk %s/%s' % (algo.name, ichunk, search_params.nchunks)
-            chunk[:,:] = 0.0
+
+            if args.add_noise:
+                search_params.simulate_noise(rng, chunk)
+            else:
+                chunk[:,:] = 0.0
+
             search_params.add_pulse(p, chunk, ichunk)
             algo.search_chunk(chunk, ichunk)
 
