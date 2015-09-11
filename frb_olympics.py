@@ -109,7 +109,7 @@ def imp(filename):
         module_name = os.path.basename(filename)
         module_name = module_name[:module_name.find('.')]
         ret = imp.load_source(module_name, filename)
-    except e:
+    except Exception as e:
         if mpi_rank == 0:
             mpi_bcast(e)
         raise
