@@ -5,7 +5,7 @@ import sys
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-N', '--add-noise-to-pulse-sims', dest='add_noise', action='store_true')
+parser.add_argument('-N', '--no-noise-in-pulse-sims', dest='no_noise', action='store_true')
 parser.add_argument('--sn', type=float, default=30.0)
 parser.add_argument('-o', '--outstem')
 parser.add_argument('search_params_txtfile')
@@ -112,10 +112,10 @@ for ipulse in xrange(nmc_pulse_loc):
         for ichunk in xrange(search_params.nchunks):
             print '    %s: starting chunk %s/%s' % (algo.name, ichunk, search_params.nchunks)
 
-            if args.add_noise:
-                search_params.simulate_noise(rng, chunk)
-            else:
+            if args.no_noise:
                 chunk[:,:] = 0.0
+            else:
+                search_params.simulate_noise(rng, chunk)
 
             search_params.add_pulse(p, chunk, ichunk)
             algo.search_chunk(chunk, ichunk)
