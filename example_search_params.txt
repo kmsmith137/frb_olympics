@@ -1,6 +1,6 @@
 # DM range to search
 dm_min = 1.0
-dm_max = 2000.0   # note: DM=2132 corresponds to 1.024s delay
+dm_max = 2000.0   # note: DM=2132 corresponds to 1.024s delay in frequency range below
 
 # SM range (currently configured to disable scattering)
 sm_min = 0.0
@@ -23,5 +23,6 @@ freq_hi = 606.25
 dt_sample = 1.0e-3   # 1 msec
 
 # Buffer sizes
+# Note: setting nsamples_per_chunk < nsamples_tot will test incremental search
 nsamples_tot = 8192
 nsamples_per_chunk = 8192
