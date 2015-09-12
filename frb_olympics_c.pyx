@@ -55,7 +55,16 @@ cdef class frb_pulse:
     def get_signal_to_noise_in_channel(self, freq_lo_MHz, freq_hi_MHz, dt_sample):
         assert self._pulse != NULL
         return self._pulse.get_signal_to_noise_in_channel(freq_lo_MHz, freq_hi_MHz, dt_sample)
-     
+
+    def get_endpoints(self, freq_lo_MHz, freq_hi_MHz):
+        """Returns (t0,t1) pair."""
+
+        cdef double t0 = 0.0
+        cdef double t1 = 00
+        assert self._pulse != NULL
+        self._pulse.get_endpoints(t0, t1, freq_lo_MHz, freq_hi_MHz)
+        return (t0, t1)
+
     def add_to_timestream(self, freq_lo_MHz, freq_hi_MHz, np.ndarray[float,ndim=1,mode='c'] timestream not None, dt_sample, ichunk):
         assert self._pulse != NULL
         self._pulse.add_to_timestream(freq_lo_MHz, freq_hi_MHz, &timestream[0], timestream.shape[0], dt_sample, ichunk)

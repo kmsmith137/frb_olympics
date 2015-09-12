@@ -24,7 +24,8 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
         double scattering_measure
 
         double get_signal_to_noise_in_channel(double freq_lo_MHz, double freq_hi_MHz, double dt_sample) except +
-        
+
+        void get_endpoints(double &t0, double &t1, double freq_lo_MHz, double freq_hi_MHz) except +
         void add_to_timestream(double freq_lo_MHz, double freq_hi_MHz, float *timestream, int nsamples_per_chunk, double dt_sample, int ichunk) except +
 
 
