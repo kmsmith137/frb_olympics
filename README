@@ -1,0 +1,114 @@
+Right now the FRB olympics is a little bit of a mess, since it uses code from 
+several git repositories, and the python and C++ parts have been kludged together.
+I'll be doing some cleanup soon, but in the meantime here are some notes.
+
+
+INSTALLATION
+------------
+  - Make sure that cython and fftw3 are installed (and optionally mpi4py, if
+    you want to run in multithreaded mode on either a multicore machine or
+    a cluster).
+
+  - Get Alex Josephy's FDMT code from github.com/ajosephy/FDMT, and copy
+    cpuFDMT.py somewhere where the Python interpreter will import it (setting
+    $PYTHONPATH if necessary)
+
+  - Get Jon Sievers' tree code from github.com/kmsmith137/dedispersion,
+    and follow the installation directions in the README.
+
+  - Create a file Makefile.local as described in comments in Makefile.local.example
+    You can probably start with 'cp Makefile.local.example Makefile.local', and then
+    edit a little from there
+
+  - You should now be able to compile the frb_olympics with
+      make
+      make install
+
+
+AN EXAMPLE RUN
+--------------
+
+  For a short run which compares the bonsai algorithm with and
+  without downsampling, do
+    ./frb-compare.py -o example1 example_search_params.txt example_algo_list1.py 1024 128
+
+  or on a machine with MPI (and say 4 cores)
+     mpiexec -np 4 ./frb-compare.py -o example1 example_search_params.txt example_algo_list1.py 1024 128
+
+  It should finish in ~10 minutes or so, and write files
+     example1_sigma.pdf
+     example1_sigmap.pdf
+  comparing the two cases (for definitions of the statistics "sigma" and "sigma-prime", see the
+  FRB olympics memo; eventually I'll write some sort of manual)
+
+
+  The frb-compare.py command line syntax is
+    ./frb-compare.py [-N] -o outstem search_params.txt algo_list.py nmc_noise nmc_pulse
+
+  where
+
+    search_params.txt defines various parameters of the search 
+       (easiest to explain by example; see example_search_params.txt)
+
+    algo_list.py is a python file which is imported, and registers the search
+       algorithms being compared by calling frb_olympics.add_algo()
+
+    nmc_noise, nmc_pulse are the number of "noise" and "pulse" sims being compared;
+       see the FRB olympics memo for more explanation.  Note that a lot of noise sims
+       are needed for convergence; I usually run with 1024.
+    
+    outstem determines the filenames of the summary plots
+       (as ${outstem}_sigma.pdf and ${outstem}_sigmap.pdf)
+
+
+  The -N flag deserves some discussion!
+     By default (no -N) the pulse sims contain noise in addition to the pulse
+     If -N is specified, then the pulse sims will be zero except for the pulse.
+
+  Running with -N will generate prettier plots, but gives misleading results
+  for algorithms which use the measured noise properties of the data to determine
+  weighting or normalization.  (Currently only FDMT does this, but eventually we
+  want to move toward all algorithms doing this, since it's a necessity for real
+  data.)
+
+
+MORE EXAMPLES
+-------------
+
+  example_algo_list2.py contains examples of all the search algorithms,
+  for reference.
+
+  In the directory runs-for-initial-memo, you can find all the algo_list.py
+  files that were used to generate plots for the FRB olympics memo.
+
+
+INTERNALS
+---------
+  
+Right now the internals aren't very well documented, but the following may help:
+
+  - The docstring at the top of frb_olympics.py, which explains some key data
+    structures and the interface for defining a new search algorithm.
+
+  - For an example of a search algorithm implemented in Python, see frb_fdmt.py
+    (just a wrapper around Alex Josephy's cpuFDMT.py, but shows how to implement
+     the frb_olympics search algorithm API)
+
+  - For an example of a search algorithm implemented in C++, see frb_simple_direct.cpp
+    (and cython boilerplate in _frb_olympics_c.pxd, frb_olympics_c.pyx)
+
+  - For visual sanity checking, I find the program frb-dump.py useful.  It applies
+    the DM transform to a timestream containing nine pulses, and plots the output
+    of the transform, with arrival time on the x-axis and DM on the y-axis.  For
+    an example, do
+ 
+       ./frb-dump.py -o dump.pdf example_search_params.txt example_algo_list1.py
+
+    then look at dump.pdf.  The nine pulses should appear along the boundary of 
+    the searched (unmasked) region.  If some of the pulses don't appear then the
+    searched region in (DM,arrival_time) space is too small, or something else
+    is wrong.  If the pulses aren't on the boundary, then the searched region in
+    (DM,arrival_time) space is too large, which may or may not be a problem.
+
+    By default, frb-dump.py will use the first algorithm in the algo_list.py file,
+    but this can be overriddent with -i [ALGO_INDEX] on the command line.

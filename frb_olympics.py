@@ -1,3 +1,126 @@
+"""
+Here are some notes on the frb_olympics internals (see also the README file)
+
+One important data structure is frb_search_params, which is shared
+between C++ and Python, and defines various parameters of the search.
+
+The frb_search_params constructor syntax is
+   p = frb_search_params('example_search_params.txt')    # construct from file
+   p = frb_search_params(p2)           # make copy from existing search_params
+
+An frb_search_params contains the following members
+
+   # These fields define the parameter space to be simulated or searched
+   p.dm_min, p.dm_max         # dispersion measure (DM) range
+   p.sm_min, p.sm_max         # scattering measure (SM) range, not really used yet
+   p.beta_min, p.beta_max     # spectral index range, not really used yet
+   p.width_min, p.width_max   # intrinsic width range
+
+   # These fields define the frequency channels of the instrument, and its time
+   # resolution.  Channels are assumed equally spaced in frequency nu.
+   p.nchan               # number of frequency channels
+   p.band_lo_freq_MHz    # e.g. 400.0 for full CHIME
+   p.band_hi_freq_MHz    # e.g. 800.0 for full CHIME
+   p.dt_sample           # e.g. 1.0e-3 for full CHIME (all times are in seconds)
+
+   # These fields define the length of the timestream to be searched.
+   # For a non-incremental search, we have nsamples_tot == nsamples_per_chunk and nchunks == 1.
+   # For an incremental search, we have nsamples_tot == nsamples_per_chunk * nchunks.
+   p.nsamples_tot
+   p.nsamples_per_chunk
+   p.nchunks
+
+For the full declaration of frb_search_params, see frb_olympics.hpp (C++) or 
+frb_olympics_c.pyx (Python).  The python declaration is sort of hard to read 
+due to all the cython boilerplate!
+
+I usually initialize the frb_search_params by writing a .txt file (best illustrated 
+by example; see example_search_params.txt) and then doing:
+   p = frb_olympics.frb_search_params('example_search_params.txt')
+
+
+The frb_olympics uses a plugin architecture in which new search algorithms can
+be included as long as they implement an appropriate API.  For search algorithms
+written in Python, the API is as follows.  Each search algorithm should be a class
+which implements the following methods:
+
+  __init__(self, ...):
+      should initialize self.name, in addition to any fields needed internally
+
+  search_init(self, search_params):
+      Here, 'search_params' is an object of class frb_search_params, see above.
+      This method is called as soon as the search params are determined.  It will
+      only be called once, even if multiple timestreams are searched.
+
+      It should initialize the following fields, in addition to any fields
+      needed internally:
+
+         # Memory used while searching, in GB
+         self.search_gb
+
+         # Normally, the search algorithm will just compute the trigger statistic (a scalar)
+         # without actually returning the output of its DM transform (a 2D array indexed by 
+         # DM and arrival time).  
+         #
+         # However, for debugging purposes we sometimes want to inspect the output of the transform.
+         # The algorithm should set (self.debug_buffer_ndm, self.debug_buffer_nt) to the shape
+         # of the transform output array.
+         #
+         self.debug_buffer_ndm
+         self.debug_buffer_nt
+
+   search_start(self):
+       Called once per searched timestream (unlike search_init(), which is only called once, period).
+       Does per-timestream initializations, such as allocating buffers.
+
+   search_chunk(self, chunk, ichunk, debug_buffer=None):
+       This is the main routine which does the actual search.  Its job is to set
+       self.search_result to the "trigger" statistic T from the FRB olympics memo.  
+
+       In a non-incremental search, search_chunk() will be called once with ichunk=0.
+
+       In an incremental search, search_chunk() will be called multiple times (with 
+       ichunk=0,..,nchunks-1) and search_chunk() is responsible for saving state between
+       calls and setting self.search_result at the end.
+
+       Normally, search_chunk() just computes the trigger statistic (a scalar) without
+       actually returning the output of the DM transform (a 2D array indexed by DM and
+       arrival time).  However, if debug_buffer is not None, it will be an array of shape
+       (self.debug_buffer_ndm, self.debug_buffer_nt) which holds the output of the DM
+       transform.  I usually use this for visual inspection with frb-dump.py, but it
+       could be used for other things.  
+
+       "Masked" entries in the debug_buffer which are not actually searched
+       (because their DM or arrival time is out of range) are indicated by setting
+       them to -1.0e30.
+
+  search_end(self):
+       This is called once per searched timestream, after the calls to search_chunk().
+       Usually it just deallocates buffers, which is important so that we don't use
+       too much memory when multiple searches a run in parallel with frb-compare.py.
+       
+
+Summarizing, the structure of frb-compare.py is approximately this:
+
+   for each search algorithm a:
+      call a.__init__()
+      call a.search_init(search_params)
+
+   for each timestream:
+      for each algorithm a:
+         call a.search_start()
+         for each chunk in an incremental search:
+             call a.search_chunk()
+         call a.search_end()
+
+For a well-commented example of implementing the search algorithm API in Python,
+see frb_fdmt.py (just a wrapper around Alex Josephy's cpuFDMT.py, but shows how 
+to implement the API).
+
+See the README file for some frb-compare.py example runs.  Another useful utility
+for visual sanity checking is frb-dump.py, see the bottom of the README file.
+"""
+
 import os
 import sys
 import numpy as np
