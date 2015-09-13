@@ -1,4 +1,0 @@
-simple_direct 0.1
-sloth 0.1 2
-simple_tree 1024 0
-bonsai 1024
