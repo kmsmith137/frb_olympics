@@ -149,18 +149,22 @@ double frb_search_params::get_signal_to_noise_of_pulse(const frb_pulse &pulse) c
     return sqrt(acc);
 }
 
+// helper for frb_search_params::make_dm_table()
 static inline double F(double DM, double DM0, double DM1, double epsilon)
 {
     return 2.0/epsilon * (DM1/DM0) * asinh(sqrt(DM/DM1));
 }
 
+// helper for frb_search_params::make_dm_table()
 static inline double Finv(double f, double DM0, double DM1, double epsilon)
 {
     return DM1 * square(sinh(0.5 * epsilon * (DM0/DM1) * f));
 }
 
-void frb_search_params::make_dm_table(std::vector<double> &dm_table, double epsilon) const
+void frb_search_params::make_dm_table(vector<double> &dm_table, double epsilon) const
 {
+    xassert(epsilon > 0.0);
+
     double nu = (band_freq_lo_MHz + band_freq_hi_MHz) / 2.0;      // central frequency    
     double dnu = (band_freq_hi_MHz - band_freq_lo_MHz) / nchan;   // channel width
     double DM0 = dt_sample / 4.148806e3 / (1.0/square(band_freq_lo_MHz) - 1.0/square(band_freq_hi_MHz));
@@ -183,6 +187,70 @@ void frb_search_params::make_dm_table(std::vector<double> &dm_table, double epsi
     dm_table[0] = dm_min;
     dm_table[ndm-1] = dm_max;
 }
+
+
+// a heuristic guess for how to populate the spectral index table
+void frb_search_params::make_spectral_index_table(vector<double> &beta_table, double epsilon) const
+{
+    xassert(epsilon > 0.0);
+
+    if (beta_max < beta_min + 1.0e-10) {
+	beta_table.resize(1);
+	beta_table[0] = (beta_min + beta_max) / 2.;
+	return;
+    }
+    
+    double dlog = log(band_freq_hi_MHz / band_freq_lo_MHz);
+    int nbeta = (int)((beta_max-beta_min) * dlog / sqrt(epsilon) / 6.0) + 1;
+    
+    beta_table.resize(nbeta);
+    for (int i = 0; i < nbeta; i++)
+	beta_table[i] = ((nbeta-i-0.5)*beta_min + (i+0.5)*beta_max) / nbeta;
+}
+
+
+// helper for frb_search_params::make_sm_table()
+static inline double G(double SM, double SM0)
+{
+    return log(SM+3*SM0);
+}
+
+// helper for frb_search_params::make_sm_table()
+static inline double Ginv(double g, double SM0)
+{
+    return exp(g)-3*SM0;
+}
+
+// heuristic guess for how to populate the sm table
+void frb_search_params::make_sm_table(vector<double> &sm_table, double epsilon, int nsm) const
+{
+    xassert((epsilon >= 0.0) && (nsm >= 0));
+    xassert((epsilon > 0.0) || (nsm > 0.0));
+
+    double nu_c = 0.5 * (band_freq_lo_MHz + band_freq_hi_MHz);
+    double SM0 = dt_sample / scatter_broadening(1.0, nu_c);
+
+    double Gmin = G(sm_min, SM0);
+    double Gmax = G(sm_max, SM0);
+
+    if (Gmax < Gmin + 1.0e-5) {
+	sm_table.resize(1);
+	sm_table[0] = (sm_min + sm_max) / 2.0;
+	return;
+    }
+
+    nsm = max(nsm, 1);
+    if (epsilon > 0.0)
+	nsm = max(nsm, (int)((Gmax-Gmin)/epsilon) + 1);
+
+    sm_table.resize(nsm);
+
+    for (int i = 0; i < nsm; i++) {
+	double g = ((nsm-i-0.5)*Gmin + (i+0.5)*Gmax) / nsm;
+	sm_table[i] = Ginv(g, SM0);
+    }
+}
+
 
 
 }  // namespace frb_olympics

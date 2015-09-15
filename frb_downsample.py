@@ -47,3 +47,4 @@ class downsample:
 
     def search_end(self):
         self.algo.search_end()
+        self.search_result = self.algo.search_result

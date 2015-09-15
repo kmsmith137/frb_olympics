@@ -71,6 +71,7 @@ plot_pulse(8.0, 700., 701., 1.681e-3, 67, sm=19.0)
 plot_pulse(8.3, 701., 701., 1.0483e-3, 49, sm=5.0)
 plot_pulse(8.3, 701., 701., 1.238e-3, 37, sm=10.0)
 plot_pulse(8.3, 701., 701., 1.581e-3, 64, sm=15.0)
+plot_pulse(8.3, 501., 501., 1.581e-3, 64, sm=15.0)
 
 plt.savefig('pulse2.pdf')
 plt.close()

@@ -128,7 +128,7 @@ import numpy as np
 # cython imports, including the search algorithms 
 #   { simple_direct, simple_tree, sloth, bonsai}
 from frb_olympics_c import frb_rng, frb_pulse, frb_search_params, \
-    simple_direct, simple_tree, sloth, bonsai
+    simple_direct, simple_tree, sloth, bonsai, sloth_sm_subsearch
 
 # Alex Josephy FDMT code
 from frb_fdmt import fdmt
@@ -136,6 +136,10 @@ from frb_fdmt import fdmt
 # the downsample search "algorithm", which just wraps
 # another search algorithm and runs it at lower time sampling
 from frb_downsample import downsample
+
+# the rechunk search "algorithm" wraps another search algorithm and runs it
+# with a different chunk size (useful for debugging incremental search)
+from frb_rechunk import rechunk
 
 
 ####################################################################################################
@@ -296,7 +300,7 @@ def enumerate_algorithms_with_memhack(bracket_search=True):
         assert mpi_tasks_per_node % memhack == 0
 
         nbarriers1 = mpi_rank_within_node % memhack
-        nbarriers2 = memhack - nbarriers1 - 1
+        nbarriers2 = memhack - nbarriers1
 
         for i in xrange(nbarriers1):
             mpi_barrier()
@@ -317,7 +321,7 @@ def enumerate_algorithms_with_memhack(bracket_search=True):
 
 
 class comparison_outputs:
-    def __init__(self, noise_data, pulse_data):
+    def __init__(self, noise_data, pulse_data, search_params=None):
         assert noise_data.ndim == 2
         assert pulse_data.ndim == 2
         assert pulse_data.shape[1] == noise_data.shape[1] + 5
@@ -335,11 +339,12 @@ class comparison_outputs:
         self.pulse_intrinsic_width = pulse_data[:,1]
         self.pulse_dm = pulse_data[:,2]
         self.pulse_sm = pulse_data[:,3]
-        self.pulse_spectral_index = pulse_data[:,4]
+        self.pulse_beta = pulse_data[:,4]
         self.pulse_data = pulse_data[:,5:]
 
         self.pulse_sigma = (self.pulse_data - self.noise_mean[np.newaxis,:]) / self.noise_stddev[np.newaxis,:]
         self.pulse_sigmap = (self.pulse_data - self.noise_mean[np.newaxis,:])
+        self.search_params = search_params
 
 
     def plot_histogram(self, ialgo, filename, xmax=None):
@@ -362,8 +367,17 @@ class comparison_outputs:
         print 'wrote', filename
 
 
-    def plot_sigma(self, stem, ialgo_list=None, color_list=None, marker_list=None, label_list=None, xmin=None, xmax=None, legloc='lower left'):
-        """Writes two files ${stem}_sigma.pdf and ${stem}_sigmap.pdf"""
+    def plot_sigma(self, stem, ialgo_list=None, color_list=None, marker_list=None, label_list=None, legloc='lower left', **kwds):
+        """
+        Writes two files ${stem}_sigma.pdf and ${stem}_sigmap.pdf
+
+        The **kwds can be any of: dm_min, dm_max, sm_min, sm_max, beta_min, beta_max
+
+        These influence the plot xranges, which are given by (in order of priority):
+           - kwds to this routine
+           - values in the search_params specified at construction, if not None
+           - matplotlib defaults
+        """
 
         import matplotlib.pyplot as plt
 
@@ -387,24 +401,40 @@ class comparison_outputs:
         assert len(marker_list) >= len(ialgo_list)
         assert len(label_list) == len(ialgo_list)
 
-        todo = [ (stem + '_sigma.pdf', self.pulse_sigma, r'$\sigma$'),
-                 (stem + '_sigmap.pdf', self.pulse_sigmap, r"$\sigma'$") ]
+        # (xdata, xlabel, xstem, xmin_str, xmax_str) triples
+        x_todo = [ (self.pulse_dm, 'DM', '', 'dm_min', 'dm_max') ]
+        if (np.max(self.pulse_sm) - np.min(self.pulse_sm)) > 1.0e-3:
+            x_todo.append((self.pulse_sm, 'SM', '_sm', 'sm_min', 'sm_max'))
+        if (np.max(self.pulse_beta) - np.min(self.pulse_beta)) > 1.0e-3:
+            x_todo.append((self.pulse_beta, 'spectral index', '_beta', 'beta_min', 'beta_max'))
 
-        for (filename, d, ylabel) in todo:
-            slist = [ ]
-            for (i,ialgo) in enumerate(ialgo_list):
-                slist.append(plt.scatter(self.pulse_dm, d[:,ialgo], s=5, color=color_list[i], marker=marker_list[i]))
+        # (ydata, ylabel, ystem) triples
+        y_todo = [ (self.pulse_sigma, r"$\sigma$", '_sigma'),
+                   (self.pulse_sigmap, r"$\sigma'$", '_sigmap') ]
+                   
+        for (xdata, xlabel, xstem, xmin_str, xmax_str) in x_todo:
+            for (ydata, ylabel, ystem) in y_todo:
+                filename = ('%s%s%s.pdf' % (stem, xstem, ystem))
 
-            if xmin is not None:
-                plt.xlim(xmin=xmin)
-            if xmax is not None:
-                plt.xlim(xmax=xmax)
+                slist = [ ]
+                for (i,ialgo) in enumerate(ialgo_list):
+                    slist.append(plt.scatter(xdata, ydata[:,ialgo], s=5, color=color_list[i], marker=marker_list[i]))
 
-            plt.ylim(ymin=0)
-            plt.xlabel('DM')
-            plt.ylabel(ylabel)
-            plt.legend(slist, label_list, scatterpoints=1, loc=legloc)
+                if kwds.has_key(xmin_str):
+                    plt.xlim(xmin = kwds[xmin_str])
+                elif self.search_params is not None:
+                    plt.xlim(xmin = getattr(self.search_params, xmin_str))
 
-            plt.savefig(filename)
-            plt.clf()
-            print 'wrote', filename
+                if kwds.has_key(xmax_str):
+                    plt.xlim(xmax = kwds[xmax_str])
+                elif self.search_params is not None:
+                    plt.xlim(xmax = getattr(self.search_params, xmax_str))
+
+                plt.ylim(ymin=0)
+                plt.xlabel(xlabel)
+                plt.ylabel(ylabel)
+                plt.legend(slist, label_list, scatterpoints=1, loc=legloc)
+
+                plt.savefig(filename)
+                plt.clf()
+                print 'wrote', filename

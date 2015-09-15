@@ -11,9 +11,9 @@
 #
 include Makefile.local
 
-EXE_NOINSTALL=test-rng
+EXE_NOINSTALL=run-unit-tests
 SCRIPT_INSTALL=frb-compare.py frb-dump.py
-PY_INSTALL=frb_olympics.py frb_downsample.py frb_fdmt.py
+PY_INSTALL=frb_olympics.py frb_downsample.py frb_rechunk.py frb_fdmt.py
 
 all: libfrb_olympics.so frb_olympics_c.so $(EXE_NOINSTALL)
 
@@ -29,7 +29,7 @@ frb_olympics_c.cpp: frb_olympics_c.pyx _frb_olympics_c.pxd frb_olympics.hpp
 frb_olympics_c.so: frb_olympics_c.cpp libfrb_olympics.so
 	$(CPP) -shared -o $@ $< -L. -lfrb_olympics
 
-test-rng: test-rng.o libfrb_olympics.so
+run-unit-tests: run-unit-tests.o libfrb_olympics.so
 	$(CPP) -o $@ $^
 
 install: libfrb_olympics.so frb_olympics_c.so

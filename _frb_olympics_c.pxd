@@ -1,4 +1,5 @@
 from libcpp.string cimport string
+from libcpp cimport bool
 
 
 cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
@@ -70,5 +71,8 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
 
     cdef frb_search_algorithm_base *simple_direct(double epsilon) except +
     cdef frb_search_algorithm_base *simple_tree(int ntree, int ndownsample) except +
-    cdef frb_search_algorithm_base *sloth(double epsilon, int nupsample) except +
+    cdef frb_search_algorithm_base *sloth(double epsilon_s, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental) except +
     cdef frb_search_algorithm_base *bonsai(int ntree, int nupsample) except +
+
+    cdef frb_search_algorithm_base *sloth_sm_subsearch(double sm, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental) except +
+

@@ -48,7 +48,14 @@ inline double dispersion_delay(double dm, double freq_MHz)
 
 inline double scatter_broadening(double sm, double freq_MHz)
 {
-    return 1.0e9 * sm / (freq_MHz * freq_MHz * freq_MHz * freq_MHz);
+    return 1.0e9 * sm / pow(freq_MHz, 4.4);
+}
+
+// a = e^(-dt/ts) where "dt" is the sample length and ts is the scattering time
+inline double ascatt(double sm, double freq_MHz, double dt_sample)
+{
+    double ts = scatter_broadening(sm, freq_MHz);
+    return (ts > 1.0e-3 * dt_sample) ? exp(-dt_sample/ts) : 0.0;
 }
 
 
@@ -104,6 +111,10 @@ extern int  integer_log2(int n);     // aborts if n is not a power of two
 extern double time_diff(const struct timeval &tv1, const struct timeval &tv2);
 extern struct timeval get_time();
 
+extern void init_cf(double *out, int nups, int lag, double a);
+extern void convolve_cf(double *out, int nups, int lag_out, int lag_in, int nconv, const double *wconv, const double *in);
+extern void run_cf_unit_tests();
+
 
 // -------------------------------------------------------------------------------------------------
 
@@ -119,6 +130,8 @@ public:
 
     double uniform(double lo, double hi);
     double gaussian();   // zero mean, unit variance
+
+    static void run_unit_tests();
 };
 
 
@@ -131,7 +144,7 @@ struct frb_pulse {
     // the usual radio astronomy normalization in Janskies, so the spectral
     // index is shifted by 2.)
     //
-    double   fluence;   // at 1 GHz
+    double   fluence;   // at 600 MHz
     double   spectral_index;
 
     //
@@ -203,13 +216,26 @@ struct frb_search_params {
 	return ((nchan-i)*band_freq_lo_MHz + (i)*band_freq_hi_MHz) / (double)nchan;
     }
 
+    inline double freq_mid_of_channel(int i) const
+    {
+	return ((nchan-i-0.5)*band_freq_lo_MHz + (i+0.5)*band_freq_hi_MHz) / (double)nchan;
+    }
+
     inline double freq_hi_of_channel(int i) const
     { 
 	return ((nchan-i-1)*band_freq_lo_MHz + (i+1)*band_freq_hi_MHz) / (double)nchan;
     }
 
-    // A useful helper function for direct searches
+    // Useful helper functions for search algorithms
     void make_dm_table(std::vector<double> &dm_table, double epsilon) const;
+    void make_spectral_index_table(std::vector<double> &beta_table, double epsilon) const;
+
+    //
+    // An SM table can be constructed with either syntax:
+    //    make_sm_table(sm_table, epsilon, 0);    // construct with fixed spacing
+    //    make_sm_table(sm_table, 0.0, nsm);      // construct with fixed number of trial SM's
+    //
+    void make_sm_table(std::vector<double> &sm_table, double epsilon, int nsm) const;
 };
 
 
@@ -253,9 +279,10 @@ struct frb_search_algorithm_base : boost::noncopyable
 // Algorithms
 extern frb_search_algorithm_base *simple_direct(double epsilon);
 extern frb_search_algorithm_base *simple_tree(int ntree, int ndownsample);
-extern frb_search_algorithm_base *sloth(double epsilon, int nupsample);
 extern frb_search_algorithm_base *bonsai(int ntree, int nupsample);
+extern frb_search_algorithm_base *sloth(double epsilon_s, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental);
 
+extern frb_search_algorithm_base *sloth_sm_subsearch(double sm, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental);
 
 }  // namespace frb_olympics
 

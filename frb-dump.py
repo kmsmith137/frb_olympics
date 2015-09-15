@@ -34,14 +34,22 @@ gb += 1.0e-9 * search_params.nchan * search_params.nsamples_per_chunk * 4.0   # 
 gb += 1.0e-9 * algo.debug_buffer_ndm * algo.debug_buffer_nt * 4.0   # timestream
 print 'Estimated memory usage: %s GB' % gb
 
-(dm0, dm1) = (search_params.dm_min, search_params.dm_max)
-pulse_list = [ ]
+sm = search_params.sm_max
+if sm > 0.0:
+    print 'Using SM =', sm
 
-for dm in [ (0.97*dm0 + 0.03*dm1), (0.50*dm0 + 0.50*dm1), (0.03*dm0 + 0.97*dm1) ]:
-    (t0, t1) = search_params.get_allowed_arrival_times(0.0, dm, 0.0)
-    pulse_list.append(frb_olympics.frb_pulse(1.0, 0.97*t0 + 0.03*t1, 1.0e-5, dm, 0.0, 0.0))
-    pulse_list.append(frb_olympics.frb_pulse(1.0, 0.50*t0 + 0.50*t1, 1.0e-5, dm, 0.0, 0.0))
-    pulse_list.append(frb_olympics.frb_pulse(1.0, 0.03*t0 + 0.97*t1, 1.0e-5, dm, 0.0, 0.0))
+(dm0, dm1) = (search_params.dm_min, search_params.dm_max)
+dm_list = [ (0.97*dm0 + 0.03*dm1), (0.50*dm0 + 0.50*dm1), (0.03*dm0 + 0.97*dm1) ]
+
+print 'DM range in search_params =', ((dm0,dm1))
+print 'Putting pulses at DM list =', dm_list
+
+pulse_list = [ ]
+for dm in dm_list: 
+    (t0, t1) = search_params.get_allowed_arrival_times(0.0, dm, sm)
+    pulse_list.append(frb_olympics.frb_pulse(1.0, 0.97*t0 + 0.03*t1, 1.0e-5, dm, sm, 0.0))
+    pulse_list.append(frb_olympics.frb_pulse(1.0, 0.50*t0 + 0.50*t1, 1.0e-5, dm, sm, 0.0))
+    pulse_list.append(frb_olympics.frb_pulse(1.0, 0.03*t0 + 0.97*t1, 1.0e-5, dm, sm, 0.0))
 
 debug_buffer = np.zeros((algo.debug_buffer_ndm, algo.debug_buffer_nt), dtype=np.float32)
 debug_buffer[:] = -1.0e30

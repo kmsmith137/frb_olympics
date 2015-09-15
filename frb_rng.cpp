@@ -88,4 +88,63 @@ double frb_rng::gaussian()
     return this->gaussian_dist(this->generator);
 }
 
+
+// -------------------------------------------------------------------------------------------------
+//
+// rng unit tests
+
+
+static void test_rng_save(frb_rng &r, int n)
+{
+    frb_rng r2 = r;
+
+    vector<double> buf(n);
+    for (int i = 0; i < n; i++)
+	buf[i] = r.gaussian();
+    for (int i = 0; i < n; i++)
+	assert(buf[i] == r2.gaussian());
+
+    cerr << "  test_rng_save(" << n << "): pass\n";
+}
+
+
+static void test_rng_gaussian(frb_rng &r, int n)
+{
+    double acc = 0.0;
+    double acc2 = 0.0;
+    double acc4 = 0.0;
+
+    struct timeval tv1 = get_time();
+
+    for (int i = 0; i < n; i++) {
+	double x = r.gaussian();
+	acc += x;
+	acc2 += x*x;
+	acc4 += x*x*x*x;
+    }
+
+    struct timeval tv2 = get_time();
+    double dt = 1.0e9 * time_diff(tv1,tv2) / (double)n;
+
+    cerr << "test_rng_gaussian: generated " << n << " Gaussian values in " <<  dt << " nsec/value\n"
+	 << "    should be close to zero: " << (acc/n) << "\n"
+	 << "    should be close to 1: " << (acc2/n) << "\n"
+	 << "    should be close to 3: " << (acc4/n) << "\n";
+}
+
+
+// static member function
+void frb_rng::run_unit_tests()
+{
+    frb_rng r;
+
+    test_rng_save(r, 3);
+    test_rng_save(r, 4);
+    test_rng_save(r, 6);
+    test_rng_save(r, 5);
+	
+    test_rng_gaussian(r, 10000000);   // 10^8
+}
+
+
 }  // namespace frb_olympics

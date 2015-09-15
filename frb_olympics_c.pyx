@@ -413,8 +413,13 @@ def simple_tree(ntree, ndownsample=1):
     return ret
 
 
-def sloth(epsilon, nupsample=1):
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth(epsilon, nupsample)
+def sloth(epsilon_s, epsilon_d=None, epsilon_b=None, nupsample=1, strict_incremental=False):
+    if epsilon_d is None:
+        epsilon_d = epsilon_s
+    if epsilon_b is None:
+        epsilon_b = epsilon_s
+
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth(epsilon_s, epsilon_d, epsilon_b, nupsample, strict_incremental)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret
@@ -422,6 +427,16 @@ def sloth(epsilon, nupsample=1):
 
 def bonsai(ntree, nupsample=1):
     cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(ntree, nupsample)
+    ret = frb_search_algorithm_base()
+    ret._p = ap
+    return ret
+
+
+def sloth_sm_subsearch(sm, epsilon_d, epsilon_b=None, nupsample=1, strict_incremental=False):
+    if epsilon_b is None:
+        epsilon_b = epsilon_d
+
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth_sm_subsearch(sm, epsilon_d, epsilon_b, nupsample, strict_incremental)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret

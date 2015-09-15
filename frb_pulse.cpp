@@ -222,12 +222,16 @@ static frb_sampled_pulse make_pulse(const frb_pulse &p, double freq_lo_MHz, doub
     double tdisp0 = dispersion_delay(p.dispersion_measure, freq_hi_MHz);
     double tdisp1 = dispersion_delay(p.dispersion_measure, freq_lo_MHz);
     double tscatt = scatter_broadening(p.scattering_measure, freq_mid_MHz);
-    double feff = p.fluence * pow(freq_mid_MHz/1000., p.spectral_index);
+    double feff = p.fluence * pow(freq_mid_MHz/600., p.spectral_index);   // FIXME chime-specific 600 here
 
     frb_pulse_fft pf(nt_pad * novs, dt/novs, t0);
     pf.fill_with_gaussian(p.arrival_time + tdisp0, feff, p.intrinsic_width);
     pf.apply_dispersion(tdisp1 - tdisp0);
     pf.apply_scattering(tscatt);
+    
+    // this probably doesn't matter given the high oversampling, but for maximum accuracy,
+    // we convolve with the (boxcar) window function of the oversampled timestream.
+    pf.apply_dispersion(dt/novs);
 
     frb_sampled_pulse sp = pf.fft();
     sp.downsample(nt_pad);
