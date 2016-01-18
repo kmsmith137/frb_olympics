@@ -1,6 +1,10 @@
 #ifndef _FRB_OLYMPICS_HPP
 #define _FRB_OLYMPICS_HPP
 
+#if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
+#error "This source file needs to be compiled with C++0x support (g++ -std=c++0x)"
+#endif
+
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
@@ -10,9 +14,6 @@
 #include <iostream>
 #include <exception>
 
-#include <boost/shared_ptr.hpp>
-#include <boost/make_shared.hpp>
-#include <boost/noncopyable.hpp>
 #include <boost/random/uniform_01.hpp>
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/mersenne_twister.hpp>
@@ -35,6 +36,13 @@ namespace frb_olympics {
 #endif
 
 
+struct noncopyable
+{
+    noncopyable() { }
+    noncopyable(const noncopyable &) = delete;
+    noncopyable& operator=(const noncopyable &) = delete;
+};
+
 //
 // Note: throughout the code, all times are in seconds, and all frequencies 
 // are in MHz, with the exception of the scattering measure (SM).  We define
@@ -48,7 +56,7 @@ inline double dispersion_delay(double dm, double freq_MHz)
 
 inline double scatter_broadening(double sm, double freq_MHz)
 {
-    return 1.0e9 * sm / pow(freq_MHz, 4.4);
+    return 1.0e-3 * sm / pow(freq_MHz/1000.0, 4.4);
 }
 
 // a = e^(-dt/ts) where "dt" is the sample length and ts is the scattering time
@@ -226,20 +234,22 @@ struct frb_search_params {
 	return ((nchan-i-1)*band_freq_lo_MHz + (i+1)*band_freq_hi_MHz) / (double)nchan;
     }
 
-    // Useful helper functions for search algorithms
+    // Useful helper function for search algorithms
     void make_dm_table(std::vector<double> &dm_table, double epsilon) const;
-    void make_spectral_index_table(std::vector<double> &beta_table, double epsilon) const;
-
+    
     //
-    // An SM table can be constructed with either syntax:
-    //    make_sm_table(sm_table, epsilon, 0);    // construct with fixed spacing
-    //    make_sm_table(sm_table, 0.0, nsm);      // construct with fixed number of trial SM's
+    // The SM and beta tables are parametrized by the number of elements, not an "epsilon"-type parameter
     //
-    void make_sm_table(std::vector<double> &sm_table, double epsilon, int nsm) const;
+    // Note: it's possible for these routines to return a vector whose length is not equal to the
+    // requested count (nsm or nbeta).  Currently the only case when this happens is when the search_params
+    // specify a zero (or nearly zero) parameter range, but a count > 1 is specified.
+    //
+    void make_spectral_index_table(std::vector<double> &beta_table, int nbeta) const;
+    void make_sm_table(std::vector<double> &sm_table, int nsm) const;
 };
 
 
-struct frb_search_algorithm_base : boost::noncopyable
+struct frb_search_algorithm_base : noncopyable
 {
     // initialized in constructor
     std::string name;
@@ -267,22 +277,24 @@ struct frb_search_algorithm_base : boost::noncopyable
     //    - N calls to search_chunk(), where N is the number of "chunks" that the timestream is divided into
     //    - one call to search_end(), which should deallocate all buffers
     //
+    // The 'mpi_rank_within_node' argument to search_start() is sometimes useful for pinning threads to cores.
+    //
     // The virtual function search_estimate_gb() should return an estimate of the total buffer size in GB.
     //
-    virtual void  search_init(const frb_search_params &p) = 0;
-    virtual void  search_start() = 0;
-    virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer) = 0;
-    virtual void  search_end() = 0;
+    virtual void search_init(const frb_search_params &p) = 0;
+    virtual void search_start(int mpi_rank_within_node) = 0;
+    virtual void search_chunk(const float *chunk, int ichunk, float *debug_buffer) = 0;
+    virtual void search_end() = 0;
 };
 
 
 // Algorithms
 extern frb_search_algorithm_base *simple_direct(double epsilon);
-extern frb_search_algorithm_base *simple_tree(int ntree, int ndownsample);
-extern frb_search_algorithm_base *bonsai(int ntree, int nupsample);
-extern frb_search_algorithm_base *sloth(double epsilon_s, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental);
+extern frb_search_algorithm_base *sloth(double epsilon_d, int nsm, int nbeta, int nups, bool strict_incremental);
+extern frb_search_algorithm_base *bonsai(const std::string &hdf5_filename);
 
-extern frb_search_algorithm_base *sloth_sm_subsearch(double sm, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental);
+extern frb_search_algorithm_base *sloth_sm_subsearch(double epsilon_d, double sm, int nbeta, int nups, bool strict_incremental);
+
 
 }  // namespace frb_olympics
 

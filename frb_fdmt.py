@@ -50,7 +50,7 @@ class fdmt:
         assert search_params.dm_max <= search_max_dm 
 
 
-    def search_start(self):
+    def search_start(self, mpi_rank_within_node):
         #
         # search_start() is called just before the timestream is processed
         # with search_chunk().  It usually just allocates some buffers which will be

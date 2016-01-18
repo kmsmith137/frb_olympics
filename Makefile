@@ -13,15 +13,15 @@ include Makefile.local
 
 EXE_NOINSTALL=run-unit-tests
 SCRIPT_INSTALL=frb-compare.py frb-dump.py
-PY_INSTALL=frb_olympics.py frb_downsample.py frb_rechunk.py frb_fdmt.py
+PY_INSTALL=frb_olympics.py frb_combiner.py frb_downsample.py frb_rechunk.py frb_fdmt.py
 
 all: libfrb_olympics.so frb_olympics_c.so $(EXE_NOINSTALL)
 
 %.o: %.cpp frb_olympics.hpp
 	$(CPP) -c -o $@ $<
 
-libfrb_olympics.so: frb_misc.o frb_pulse.o frb_rng.o frb_search_params.o frb_simple_direct.o frb_sloth.o frb_simple_tree.o frb_bonsai.o
-	$(CPP) -o $@ -shared $^ -ljstree -lfftw3
+libfrb_olympics.so: frb_misc.o frb_pulse.o frb_rng.o frb_search_params.o frb_simple_direct.o frb_sloth.o frb_bonsai.o
+	$(CPP) -o $@ -shared $^ -lbonsai -lfftw3 -lhdf5
 
 frb_olympics_c.cpp: frb_olympics_c.pyx _frb_olympics_c.pxd frb_olympics.hpp
 	cython --cplus $<

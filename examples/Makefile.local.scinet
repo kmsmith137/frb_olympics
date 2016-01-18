@@ -1,0 +1,25 @@
+# Makefile.local for scinet.utoronto.ca
+
+# Directory where scripts will be installed (e.g. frb-compare.py)
+BINDIR=$(HOME)/bin
+
+# Directory where C++ libraries will be installed (e.g. libfrb_olympics.so)
+LIBDIR=$(HOME)/lib
+
+# Directory where C++ header files will be installed (e.g. frb_olympics.hpp)
+INCDIR=$(HOME)/include
+
+# Directory where Python modules will be installed
+PYDIR=$(HOME)/lib/python2.7
+
+#
+# C++ command line
+# Must support c++0x
+# Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
+# Don't forget to add . and $(LIBDIR) in your LD_LIBRARY_PATH environment variable (in this order)
+# Don't forget -fPIC
+# The -I/usr/include/python2.7 is needed for cython (you may need to substitute the path to your python installation)
+# The -Wno-literal-suffix flag is convenient for suppressing warnings from hdf5.h
+# The -Wno-unused-local-typedefs flag is convenient for suppressing warnings from boost
+#
+CPP=g++ -O3 -march=native -std=c++0x -Wall -Wno-literal-suffix -Wno-unused-local-typedefs -ffast-math -funroll-loops -fPIC -I$(HOME)/include/python2.7 -I$(INCDIR) -L. -L$(LIBDIR)

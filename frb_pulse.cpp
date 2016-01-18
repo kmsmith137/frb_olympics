@@ -4,7 +4,6 @@
 #include <boost/shared_array.hpp>
 
 using namespace std;
-using namespace boost;
 
 namespace frb_olympics {
 #if 0
@@ -19,7 +18,7 @@ struct frb_sampled_pulse {
     int     nt;   // number of samples
     double  dt;   // sample duration
     double  t0;   // start time; first sample covers time range (t0,t0+dt)
-    shared_array<double> buf;
+    boost::shared_array<double> buf;
 
     // Note: make sure to allocate some zero padding, to avoid artifacts from periodic boundary conditions!
     frb_sampled_pulse(int nt, double t0, double dt);
@@ -33,7 +32,7 @@ frb_sampled_pulse::frb_sampled_pulse(int nt_, double dt_, double t0_)
 {
     xassert(nt >= 2);
     xassert(dt > 0.0);
-    buf = shared_array<double> (new double[nt]);
+    buf = boost::shared_array<double> (new double[nt]);
     memset(buf.get(), 0, nt * sizeof(double));
 }
 
@@ -42,7 +41,7 @@ void frb_sampled_pulse::downsample(int new_nt)
     xassert(new_nt > 0);
     xassert(nt % new_nt == 0);
 
-    shared_array<double> new_buf = shared_array<double> (new double[new_nt]);
+    boost::shared_array<double> new_buf = boost::shared_array<double> (new double[new_nt]);
     memset(new_buf.get(), 0, new_nt * sizeof(double));
 
     int m = nt / new_nt;
@@ -59,7 +58,7 @@ void frb_sampled_pulse::truncate(int new_nt)
     xassert(new_nt > 0);
     xassert(new_nt <= nt);
 
-    shared_array<double> new_buf = shared_array<double> (new double[new_nt]);
+    boost::shared_array<double> new_buf = boost::shared_array<double> (new double[new_nt]);
     memcpy(new_buf.get(), buf.get(), new_nt * sizeof(double));
     
     nt = new_nt;
@@ -74,7 +73,7 @@ struct frb_pulse_fft {
     int     nt;
     double  dt;
     double  t0;
-    shared_array<complex<double> > buf;   // length (nt/2+1)
+    boost::shared_array<complex<double> > buf;   // length (nt/2+1)
 
     frb_pulse_fft(int nt, double dt, double t0);
     
@@ -91,7 +90,7 @@ frb_pulse_fft::frb_pulse_fft(int nt_, double dt_, double t0_)
 {
     xassert(nt >= 2);
     xassert(dt > 0.0);
-    buf = shared_array<complex<double> > (new complex<double> [nt/2+1]);
+    buf = boost::shared_array<complex<double> > (new complex<double> [nt/2+1]);
     memset(buf.get(), 0, (nt/2+1) * sizeof(complex<double>));
 }
 

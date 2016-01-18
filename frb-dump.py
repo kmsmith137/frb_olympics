@@ -54,7 +54,7 @@ for dm in dm_list:
 debug_buffer = np.zeros((algo.debug_buffer_ndm, algo.debug_buffer_nt), dtype=np.float32)
 debug_buffer[:] = -1.0e30
 
-algo.search_start()
+algo.search_start(0)
 
 for ichunk in xrange(search_params.nchunks):
     timestream = np.zeros((search_params.nchan, search_params.nsamples_per_chunk), dtype=np.float32)

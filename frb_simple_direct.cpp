@@ -26,7 +26,7 @@ struct frb_simple_direct_search_algorithm : public frb_search_algorithm_base
     virtual ~frb_simple_direct_search_algorithm() { }
 
     virtual void  search_init(const frb_search_params &p);
-    virtual void  search_start();
+    virtual void  search_start(int mpi_rank_within_node);
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
 };
@@ -80,7 +80,7 @@ void frb_simple_direct_search_algorithm::search_init(const frb_search_params &p)
 }
 
 
-void frb_simple_direct_search_algorithm::search_start()
+void frb_simple_direct_search_algorithm::search_start(int mpi_rank_within_node)
 {
     this->search_result = -1.0e30;
 }

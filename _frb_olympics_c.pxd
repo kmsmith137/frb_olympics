@@ -65,14 +65,12 @@ cdef extern from "frb_olympics.hpp" namespace "frb_olympics":
         float              search_result
 
         void   search_init(const frb_search_params &p) except +
-        void   search_start() except +
+        void   search_start(int mpi_rank_within_node) except +
         void   search_chunk(const float *chunk, int ichunk, float *debug_buffer) except +
         void   search_end() except +
 
     cdef frb_search_algorithm_base *simple_direct(double epsilon) except +
-    cdef frb_search_algorithm_base *simple_tree(int ntree, int ndownsample) except +
-    cdef frb_search_algorithm_base *sloth(double epsilon_s, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental) except +
-    cdef frb_search_algorithm_base *bonsai(int ntree, int nupsample) except +
+    cdef frb_search_algorithm_base *sloth(double epsilon_d, int nsm, int nbeta, int nupsample, bool strict_incremental) except +
+    cdef frb_search_algorithm_base *bonsai(const string &hdf5_filename) except +
 
-    cdef frb_search_algorithm_base *sloth_sm_subsearch(double sm, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental) except +
-
+    cdef frb_search_algorithm_base *sloth_sm_subsearch(double epsilon_d, double sm, int nbeta, int nupsample, bool strict_incremental) except +

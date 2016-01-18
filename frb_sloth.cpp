@@ -16,9 +16,9 @@ namespace frb_olympics {
 struct frb_sloth_sm_subsearch : public frb_search_algorithm_base
 {
     // parameters specified at construction
+    double epsilon_d;
     double sm;                      // fiducial SM for this search
-    double epsilon_d;               // determines spacing of DM table
-    double epsilon_b;               // determines spacing of beta (spectral index) table
+    int nbeta0;                     // nominal number of trial spectral indices, specified at construction (but see "nbeta" below)
     int nups;                       // upsampling parameter
     bool flag_strict_incremental;   // flag determining whether incremental search is "strict", see below
 
@@ -30,7 +30,7 @@ struct frb_sloth_sm_subsearch : public frb_search_algorithm_base
     vector<double> dm_table;  // length-ndm
 
     // spectral index table to be searched
-    int nbeta;
+    int nbeta;                  // actual number of trial spectral indices, returned by make_spectral_index_table()
     vector<double> beta_table;  // length-nbeta
 
     // spectral index weighting
@@ -110,22 +110,21 @@ struct frb_sloth_sm_subsearch : public frb_search_algorithm_base
     }
 
 
-    frb_sloth_sm_subsearch(double sm, double epsilon_d, double epsilon_b, int nups, bool flag_strict_incremental);
+    frb_sloth_sm_subsearch(double epsilon_d, double sm, int nbeta, int nups, bool flag_strict_incremental);
     virtual ~frb_sloth_sm_subsearch() { }
 
     virtual void  search_init(const frb_search_params &p);
-    virtual void  search_start();
+    virtual void  search_start(int mpi_rank_within_node);
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
 };
 
 
-frb_sloth_sm_subsearch::frb_sloth_sm_subsearch(double sm_, double epsilon_d_, double epsilon_b_, int nups_, bool strict_incremental)
-    : sm(sm_), epsilon_d(epsilon_d_), epsilon_b(epsilon_b_), nups(nups_), flag_strict_incremental(strict_incremental),
+frb_sloth_sm_subsearch::frb_sloth_sm_subsearch(double epsilon_d_, double sm_, int nbeta_, int nups_, bool flag_strict_incremental_)
+    : epsilon_d(epsilon_d_), sm(sm_), nbeta0(nbeta_), nups(nups_), flag_strict_incremental(flag_strict_incremental_),
       ndm(0), nbeta(0), nt_sbuf(0), max_save_n(0), nwork(0)
 {
     xassert(epsilon_d > 0.0);
-    xassert(epsilon_b > 0.0);
     xassert(nups >= 1);
     xassert(nups <= 16);  // upsampling more than this is surely unintentional
     xassert(sm >= 0.0);
@@ -133,15 +132,11 @@ frb_sloth_sm_subsearch::frb_sloth_sm_subsearch(double sm_, double epsilon_d_, do
     stringstream s;
     s << "subsloth-sm" << sm;
 
-    if (epsilon_d == epsilon_b)
-	s << "-eps" << epsilon_d;
-    else
-	s << "-epsd" << epsilon_d << "-epsb" << epsilon_b;
-
+    if (nbeta0 > 1)
+	s << "-nbeta" << nbeta0;
     if (nups > 1)
 	s << "-ups" << nups;
-
-    if (strict_incremental)
+    if (flag_strict_incremental)
 	s << "-strict";
 
     this->name = s.str();
@@ -184,7 +179,7 @@ void frb_sloth_sm_subsearch::search_init(const frb_search_params &p)
 #endif
 
     // Initialize spectral index table
-    p.make_spectral_index_table(this->beta_table, epsilon_b);
+    p.make_spectral_index_table(this->beta_table, nbeta0);
     this->nbeta = beta_table.size();
 
     // Initialize wbeta
@@ -311,7 +306,7 @@ void frb_sloth_sm_subsearch::search_init(const frb_search_params &p)
 }
 
 
-void frb_sloth_sm_subsearch::search_start()
+void frb_sloth_sm_subsearch::search_start(int mpi_rank_within_node)
 {
     int nchan = this->search_params.nchan;
 
@@ -495,47 +490,43 @@ void frb_sloth_sm_subsearch::search_end()
 
 struct frb_sloth_search_algorithm : public frb_search_algorithm_base
 {
-    double epsilon_s;
+    // Parameters specified at construction
     double epsilon_d;
-    double epsilon_b;
+    int nsm0;      // nominal number of trial scattering measures, specified at construction (see "nsm" below)
+    int nbeta0;    // nominal number of trial spectral indices, specified at construction 
     int nups;
     bool flag_strict_incremental;
 
-    // SM table to be searched
-    int nsm;
+    int nsm;       // actual number of trial scattering measures, returned by make_sm_table()
     vector<double> sm_table;                            // length-nsm
     vector<frb_sloth_sm_subsearch *> subsearch_table;   // length-nsm
 
-    frb_sloth_search_algorithm(double epsilon_s, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental);
+    frb_sloth_search_algorithm(double epsilon_d, int nsm, int nbeta, int nups, bool flag_strict_incremental);
     virtual ~frb_sloth_search_algorithm();
 
     virtual void  search_init(const frb_search_params &p);
-    virtual void  search_start();
+    virtual void  search_start(int mpi_rank_within_node);
     virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
     virtual void  search_end();
 };
 
 
-frb_sloth_search_algorithm::frb_sloth_search_algorithm(double epsilon_s_, double epsilon_d_, double epsilon_b_, int nupsample, bool strict_incremental_)
-    : epsilon_s(epsilon_s_), epsilon_d(epsilon_d_), epsilon_b(epsilon_b_), nups(nupsample), flag_strict_incremental(strict_incremental_), nsm(0)
+frb_sloth_search_algorithm::frb_sloth_search_algorithm(double epsilon_d_, int nsm_, int nbeta_, int nups_, bool flag_strict_incremental_)
+    : epsilon_d(epsilon_d_), nsm0(nsm_), nbeta0(nbeta_), nups(nups_), flag_strict_incremental(flag_strict_incremental_), nsm(0)
 {
-    xassert(epsilon_s > 0.0);
     xassert(epsilon_d > 0.0);
-    xassert(epsilon_b > 0.0);
-    xassert(nupsample >= 1);
-    xassert(nupsample <= 16);      // upsampling more than this is surely unintentional
+    xassert(nups >= 1);
+    xassert(nups <= 16);      // upsampling more than this is surely unintentional
 
     stringstream s;
     s << "sloth";
 
-    if (epsilon_s == epsilon_d && epsilon_d == epsilon_b)
-	s << "-eps" << epsilon_s;
-    else 
-	s << "-epss" << epsilon_s << "-epsd" << epsilon_d << "-epsb" << epsilon_b;
-
-    if (nupsample > 1)
-	s << "-ups" << nupsample;
-
+    if (nsm0 > 1)
+	s << "-nsm" << nsm0;
+    if (nbeta0 > 0)
+	s << "-beta" << nbeta0;
+    if (nups > 1)
+	s << "-ups" << nups;
     if (flag_strict_incremental)
 	s << "-strict";
 
@@ -547,14 +538,14 @@ void frb_sloth_search_algorithm::search_init(const frb_search_params &p)
 {
     this->search_params = p;
 
-    p.make_sm_table(this->sm_table, epsilon_s, 0);
+    p.make_sm_table(this->sm_table, this->nsm0);
     this->nsm = sm_table.size();
 
     cout << name << ": initializing, nsm=" << nsm << endl;
 
     this->subsearch_table.resize(nsm);
     for (int ism = 0; ism < nsm; ism++) {
-	this->subsearch_table[ism] = new frb_sloth_sm_subsearch(sm_table[ism], epsilon_d, epsilon_b, nups, flag_strict_incremental);
+	this->subsearch_table[ism] = new frb_sloth_sm_subsearch(epsilon_d, sm_table[ism], nbeta0, nups, flag_strict_incremental);
 	this->subsearch_table[ism]->search_init(p);
     }
 
@@ -569,10 +560,10 @@ void frb_sloth_search_algorithm::search_init(const frb_search_params &p)
 }
 
 
-void frb_sloth_search_algorithm::search_start()
+void frb_sloth_search_algorithm::search_start(int mpi_rank_within_node)
 {
     for (int ism = 0; ism < nsm; ism++)
-	this->subsearch_table[ism]->search_start();
+	this->subsearch_table[ism]->search_start(mpi_rank_within_node);
 
     this->search_result = -1.0e30;
 }
@@ -610,14 +601,14 @@ frb_sloth_search_algorithm::~frb_sloth_search_algorithm()
 // -------------------------------------------------------------------------------------------------
 
 
-frb_search_algorithm_base *sloth(double epsilon_s, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental)
+frb_search_algorithm_base *sloth(double epsilon_d, int nsm, int nbeta, int nups, bool strict_incremental)
 {
-    return new frb_sloth_search_algorithm(epsilon_s, epsilon_d, epsilon_b, nupsample, strict_incremental);
+    return new frb_sloth_search_algorithm(epsilon_d, nsm, nbeta, nups, strict_incremental);
 }
 
-frb_search_algorithm_base *sloth_sm_subsearch(double sm, double epsilon_d, double epsilon_b, int nupsample, bool strict_incremental)
+frb_search_algorithm_base *sloth_sm_subsearch(double epsilon_d, double sm, int nbeta, int nups, bool strict_incremental)
 {
-    return new frb_sloth_sm_subsearch(sm, epsilon_d, epsilon_b, nupsample, strict_incremental);
+    return new frb_sloth_sm_subsearch(epsilon_d, sm, nbeta, nups, strict_incremental);
 }
 
 

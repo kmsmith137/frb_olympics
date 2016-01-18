@@ -67,6 +67,26 @@ frb_search_params::frb_search_params(const string &filename)
     xassert(nsamples_per_chunk > 0.0);
     xassert(nsamples_tot % nsamples_per_chunk == 0);
 
+    // Include test to ensure that buffer is large enough to accommodate pulse at largest (DM, SM)
+    double t0, t1;
+    this->get_allowed_arrival_times(t0, t1, this->width_max, this->dm_max, this->sm_max);
+
+    if (t0 >= t1) {
+	// Buffer is too short!
+	int nmin = nsamples_tot + int((t0-t1)/dt_sample) + 1;
+
+	stringstream s;
+	s << "Fatal: buffer is too short!\n"
+	  << "    nsamples_tot = " << this->nsamples_tot << "\n"
+	  << "    minimum nsamples_tot = " << nmin << "\n"
+	  << "    suggest using a value larger than this by a factor ~2!";
+
+	throw runtime_error(s.str().c_str());
+    }
+
+    // if this assert fails, the searched timestream is too short to accommodate the pulse
+    xassert(t0 < t1);
+
     this->nchunks = nsamples_tot / nsamples_per_chunk;
 }
 
@@ -190,20 +210,17 @@ void frb_search_params::make_dm_table(vector<double> &dm_table, double epsilon) 
 
 
 // a heuristic guess for how to populate the spectral index table
-void frb_search_params::make_spectral_index_table(vector<double> &beta_table, double epsilon) const
+void frb_search_params::make_spectral_index_table(vector<double> &beta_table, int nbeta) const
 {
-    xassert(epsilon > 0.0);
-
     if (beta_max < beta_min + 1.0e-10) {
 	beta_table.resize(1);
 	beta_table[0] = (beta_min + beta_max) / 2.;
 	return;
     }
-    
-    double dlog = log(band_freq_hi_MHz / band_freq_lo_MHz);
-    int nbeta = (int)((beta_max-beta_min) * dlog / sqrt(epsilon) / 6.0) + 1;
-    
+
+    nbeta = max(nbeta, 1);
     beta_table.resize(nbeta);
+
     for (int i = 0; i < nbeta; i++)
 	beta_table[i] = ((nbeta-i-0.5)*beta_min + (i+0.5)*beta_max) / nbeta;
 }
@@ -222,11 +239,8 @@ static inline double Ginv(double g, double SM0)
 }
 
 // heuristic guess for how to populate the sm table
-void frb_search_params::make_sm_table(vector<double> &sm_table, double epsilon, int nsm) const
+void frb_search_params::make_sm_table(vector<double> &sm_table, int nsm) const
 {
-    xassert((epsilon >= 0.0) && (nsm >= 0));
-    xassert((epsilon > 0.0) || (nsm > 0.0));
-
     double nu_c = 0.5 * (band_freq_lo_MHz + band_freq_hi_MHz);
     double SM0 = dt_sample / scatter_broadening(1.0, nu_c);
 
@@ -240,13 +254,13 @@ void frb_search_params::make_sm_table(vector<double> &sm_table, double epsilon, 
     }
 
     nsm = max(nsm, 1);
-    if (epsilon > 0.0)
-	nsm = max(nsm, (int)((Gmax-Gmin)/epsilon) + 1);
-
     sm_table.resize(nsm);
+    
+    // We always put a trial SM at sm_min, but not necessarily one at sm_max.
+    sm_table[0] = sm_min;
 
-    for (int i = 0; i < nsm; i++) {
-	double g = ((nsm-i-0.5)*Gmin + (i+0.5)*Gmax) / nsm;
+    for (int i = 1; i < nsm; i++) {
+	double g = ((2*nsm-1-2*i)*Gmin + (2*i)*Gmax) / (2*nsm-1);
 	sm_table[i] = Ginv(g, SM0);
     }
 }

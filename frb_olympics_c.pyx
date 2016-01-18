@@ -334,9 +334,9 @@ cdef class frb_search_algorithm_base:
         assert search_params._params != NULL
         self._p.search_init(search_params._params[0])
 
-    def search_start(self):
+    def search_start(self, int mpi_rank_within_node):
         assert self._p != NULL
-        self._p.search_start()
+        self._p.search_start(mpi_rank_within_node)
 
     def _search_chunk1(self, np.ndarray[float,ndim=2,mode='c'] chunk not None, int ichunk):
         assert chunk.shape[0] == self.search_params.nchan
@@ -406,37 +406,22 @@ def simple_direct(epsilon):
     return ret
 
 
-def simple_tree(ntree, ndownsample=1):
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.simple_tree(ntree, ndownsample)
+def sloth(epsilon_d, nsm=1, nbeta=1, nupsample=1, strict_incremental=False):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth(epsilon_d, nsm, nbeta, nupsample, strict_incremental)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret
 
 
-def sloth(epsilon_s, epsilon_d=None, epsilon_b=None, nupsample=1, strict_incremental=False):
-    if epsilon_d is None:
-        epsilon_d = epsilon_s
-    if epsilon_b is None:
-        epsilon_b = epsilon_s
-
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth(epsilon_s, epsilon_d, epsilon_b, nupsample, strict_incremental)
+def bonsai(hdf5_filename):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(hdf5_filename)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret
 
 
-def bonsai(ntree, nupsample=1):
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.bonsai(ntree, nupsample)
-    ret = frb_search_algorithm_base()
-    ret._p = ap
-    return ret
-
-
-def sloth_sm_subsearch(sm, epsilon_d, epsilon_b=None, nupsample=1, strict_incremental=False):
-    if epsilon_b is None:
-        epsilon_b = epsilon_d
-
-    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth_sm_subsearch(sm, epsilon_d, epsilon_b, nupsample, strict_incremental)
+def sloth_sm_subsearch(epsilon_d, sm, nbeta, nupsample=1, strict_incremental=False):
+    cdef _frb_olympics_c.frb_search_algorithm_base *ap = _frb_olympics_c.sloth_sm_subsearch(epsilon_d, sm, nbeta, nupsample, strict_incremental)
     ret = frb_search_algorithm_base()
     ret._p = ap
     return ret

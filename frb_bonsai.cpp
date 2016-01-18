@@ -1,4 +1,8 @@
+#include <memory>
+#include <cstring>
 #include "frb_olympics.hpp"
+
+#include "bonsai.hpp"
 
 using namespace std;
 
@@ -8,453 +12,243 @@ namespace frb_olympics {
 #endif
 
 
-// -------------------------------------------------------------------------------------------------
 //
-// Low-level kernels for the tree transform
-
-
-static inline int bit_reverse(int i, int depth)
+// Each frb_olympics search algorithm being compared has a 'name' string for plot labels etc.
+//
+// Since I often include the bonsai algorithm several times with different config files,
+// I wrote this function to produce a name string from the filename, with some cosmetic
+// edits like replacing underscores with hyphens (the underscores confuse matplotlib if
+// texstrings=true).
+//
+static string name_from_filename(const string &filename)
 {
-    int ret = 0;
+    char *s = strdup(filename.c_str());
 
-    while (i > 0) {
-	ret += (1 << (depth-1)) / (i & ~(i-1));
-	i = i & (i-1);
+    int n = strlen(s);
+
+    if ((n > 5) && !strcmp(s+n-5, ".hdf5")) {
+	s[n-5] = 0;
+	n -= 5;
     }
+    else if ((n > 3) && !strcmp(s+n-3, ".h5")) {
+	s[n-3] = 0;
+	n -= 3;
+    }
+
+    for (int i = 0; i < n; i++) {
+	if (s[i] == '_')
+	    s[i] = '-';
+    }
+
+    string ret = s;
+    free(s);
 
     return ret;
 }
 
 
 //
-// ts1[i] <- ts1[i] + ts2[i]          0 <= i < nt
-// ts2[i] <- ts1[i+s] + ts2[i+s+1]    0 <= s < nt-s-1
+// A simple subclass of bonsai::dedispserser
 //
-static inline void tree_merge(float *ts1, float *ts2, int s, int nt, float *scratch)
-{
-    for (int i = 0; i < nt-s-1; i++)
-	scratch[i] = ts1[i+s] + ts2[i+s+1];
-    for (int i = 0; i < nt; i++)
-	ts1[i] += ts2[i];
-    for (int i = 0; i < nt-s-1; i++)
-	ts2[i] = scratch[i];
-}
+//   - trigger processing just keeps track of the global maximum.
+//
+//   - if frb_olympics is being run in 'debug' mode, meaning that the triggers are being
+//     written to an output array for visual inspection or later postprocessing, we simply
+//     copy coarse-grained triggers to the debug array.
+//
+struct frb_olympics_dedisperser : public bonsai::dedisperser {    
+    float global_max_trigger;
 
-
-static void do_tree_transform(float *buf, int depth, int nt)
-{
-    vector<float> scratch(nt, 0.0);
-
-    for (int iter = 0; iter < depth; iter++) {
-	int bs = 1 << iter;              // block size
-	int np = 1 << (depth-iter-1);    // number of block pairs to be merged
-
-	for (int ip = 0; ip < np; ip++)
-	    for (int j = 0; j < bs; j++)
-		tree_merge(&buf[((2*ip)*bs+j)*nt], &buf[((2*ip+1)*bs+j)*nt], ip, nt, &scratch[0]);
-    }
-}
-
-
-// Fills the 'dst' array (length 2^depth).  The scratch array should have size 2^(depth-1).
-static void get_tree_offsets(int *dst, int depth, int idm, int *scratch)
-{
-    xassert(idm >= 0 && idm < (1 << depth));
-
-    if (depth == 0) {
-	dst[0] = 0;
-	return;
-    }
-
-    int high_bit = 1 << (depth-1);
-    get_tree_offsets(scratch, depth-1, idm & (high_bit-1), dst);
+    // If the frb_olympics run uses a debug_buffer, then we stash the bare pointer
+    // here during the call to dedisperser::run(), so that it can be accessed during
+    // dedisperser::process_triggers().
+    float *debug_buffer;
     
-    if ((idm & high_bit) == 0) {
-	for (int i = 0; i < high_bit; i++)
-	    dst[2*i] = dst[2*i+1] = scratch[i];
+    // These fields are taken from the frb_search_params.
+    int debug_buffer_ndm;
+    int debug_buffer_nt;
+
+    // Position in debug buffer (starts at zero and increases)
+    int debug_buffer_tpos;
+
+    frb_olympics_dedisperser(const bonsai::config_params &cp, int ibeam)
+	: bonsai::dedisperser(cp, ibeam, true),     // (params, ibeam, init_weights)
+	  global_max_trigger(-1.0e30), 
+	  debug_buffer(nullptr), debug_buffer_ndm(0), 
+	  debug_buffer_nt(0), debug_buffer_tpos(0)
+    { }
+
+    virtual void preprocess_data(float *data, int data_stride) { return; }
+    virtual void finalize() { return; }
+
+    virtual void process_triggers(int itree, const bonsai::trigger_set &ts)
+    {
+	for (int i = 0; i < ts.ntm_tot; i++)
+	    global_max_trigger = max(global_max_trigger, ts.tm[i]);
+
+	if (!this->debug_buffer || (itree != 0))
+	    return;
+
+	int ts_ndm = ts.ntree_tot / ts.ndm_per_trigger;
+	int ts_nt = ts.ntime_triggers_per_transform;
+
+	xassert(debug_buffer_ndm == ts_ndm);
+	xassert(debug_buffer_tpos >= 0);
+	xassert(debug_buffer_tpos + ts_nt <= debug_buffer_nt);
+	
+	// This (ism, ibeta) pair will be used to fill the debug_buffer
+	int ism = 0;
+	int ibeta = ts.nbeta/2;
+
+	// Overall offset and DM stride in trigger_set array
+	int s0 = (ism*ts.nbeta + ibeta) * ts_nt;
+	int dstride = ts.nsm * ts.nbeta * ts_nt;
+
+	for (int idm = 0; idm < ts_ndm; idm++)
+	    for (int it = 0; it < ts_nt; it++)
+		this->debug_buffer[idm*debug_buffer_nt + debug_buffer_tpos + it] = ts.tm[idm*dstride + s0 + it];
+	
+	this->debug_buffer_tpos += ts_nt;
     }
-    else {
-	for (int i = 0; i < high_bit; i++) {
-	    dst[2*i] = i + scratch[i];
-	    dst[2*i+1] = i + scratch[i] + 1;
-	}
-    }
-}
-
-
-
-//
-// @offsets = output array from get_tree_offsets() above
-// It definitely suffices for @scratch to have size ndm, although this is probably overkill!
-//
-// FIXME: a little slow (written for code clarity, not speed)
-//
-static inline double w2(double a, double b, int ia, int ib, int ndm, int s, int nups, const int *offsets, double *scratch)
-{
-    xassert(ia >= 0);
-    xassert(ia <= ib);
-    xassert(ib < ndm);
-    xassert(s >= 0);
-    xassert(s < nups);
-
-    if (ia == ib)
-	return 1.0;
-
-    int bin0 = (offsets[ia]+s) / nups;
-    int bin1 = (offsets[ib]+s) / nups + 1;
-    memset(scratch, 0, (bin1-bin0) * sizeof(scratch[0]));
-
-    for (int i = ia; i <= ib; i++) {
-	double ii = (double)i;
-	int bin = (offsets[i]+s) / nups;
-	scratch[bin-bin0] += (min(ii+1,b) - max(ii,a)) / (b-a);
-    }
-
-    double ret = 0.0;
-    for (int i = 0; i < (bin1-bin0); i++)
-	ret += square(scratch[i]);
-
-    return ret;
-}
-
-
-// -------------------------------------------------------------------------------------------------
-
-
-struct frb_bonsai_search_algorithm : public frb_search_algorithm_base
-{
-    int depth;
-    int ntree;    // always equals 2^depth
-    int nups;     // upsampling factor
-
-    double dm1_index;   // converts DM -> transform index
-    double dm1_delay;   // converts DM -> delay in lowest lambda^2-channel
-
-    // arrays of length nchan which keep track of the channel -> lambda^2 mapping
-    int nchan;
-    vector<double> chan_lo_l2;
-    vector<double> chan_hi_l2;
-    vector<int> chan_lo_il2;
-    vector<int> chan_hi_il2;
-
-    // shape-(ntree,nups) array containing relative weight for each (DM, subsample_phase) pair
-    vector<double> weight_arr;
-
-    frb_bonsai_search_algorithm(int ntree, int nupsample);
-
-    virtual ~frb_bonsai_search_algorithm() { }
-
-    virtual void  search_init(const frb_search_params &p);
-    virtual void  search_start();
-    virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
-    virtual void  search_end();
-
-    void remap_channels(float *buf, const float *chunk) const;
-    void run_unit_tests() const;
 };
 
 
-frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(int ntree_, int nupsample_)
-    : dm1_index(0), dm1_delay(0), nchan(0)
+// -------------------------------------------------------------------------------------------------
+
+
+struct frb_bonsai_search_algorithm : frb_search_algorithm_base
 {
-    xassert((ntree_ > 0) && is_power_of_two(ntree_));
-    xassert(nupsample_ > 0);
+    // Initialized at construction
+    shared_ptr<bonsai::config_params> config;
 
-    depth = integer_log2(ntree_);
-    ntree = ntree_;
-    nups = nupsample_;
+    //
+    // We allocate a new dedisperser object in search_start() whenever a new simulation is
+    // analyzed, and destroy it in search_end().  This is so that all memory buffers are freed
+    // before going on to the next algorithm.  Eventually I'll implement dynamic buffer freeing/
+    // reallocation in libbonsai.  Then this logic can be improved by creating the dedisperser
+    // object once, and allocating/freeing its buffers for each simulation.
+    //
+    shared_ptr<frb_olympics_dedisperser> dp;
 
-    stringstream s;
-    s << "bonsai-" << ntree;
+    frb_bonsai_search_algorithm(const string &hdf5_filename);
+    virtual ~frb_bonsai_search_algorithm() { }
 
-    if (nups > 1)
-	s << "-ups" << nups;
+    // Devirtualize frb_search_algorithm_base
+    virtual void  search_init(const frb_search_params &p);
+    virtual void  search_start(int mpi_rank_within_node);
+    virtual void  search_chunk(const float *chunk, int ichunk, float *debug_buffer);
+    virtual void  search_end();
+};
 
-    this->name = s.str();
+
+// Constructor just reads the config file
+frb_bonsai_search_algorithm::frb_bonsai_search_algorithm(const string &hdf5_filename)
+{
+    bonsai::hdf5_file f(hdf5_filename);
+    bonsai::hdf5_group g(f, ".");
+
+    this->name = name_from_filename(hdf5_filename);
+    this->config = make_shared<bonsai::config_params> (g, true);
 }
 
 
+//
+// Called when the frb_olympics search_params are determined.
+//
+// We just check consistency with the bonsai config file, and set bonsai::config_params::nt_data
+// (the number of time samples which bonsai expects to receive in each input chunk) to the chunk
+// size in the frb_olympics run.
+//
 void frb_bonsai_search_algorithm::search_init(const frb_search_params &p)
 {
-    search_params = p;
-    xassert(p.nchunks == 1);  // incremental search not implemented yet
+    xassert(config->nchan == p.nchan);
+    xassert(fabs(config->freq_lo_MHz - p.band_freq_lo_MHz) < 0.01);
+    xassert(fabs(config->freq_hi_MHz - p.band_freq_hi_MHz) < 0.01);
+    xassert(fabs(config->dt_sample - p.dt_sample) < 1.0e-5);
 
-    this->debug_buffer_ndm = ntree;
-    this->debug_buffer_nt = p.nsamples_tot * nups;
-    this->search_gb = 1.0e-9 * (double)(ntree) * (double)(p.nsamples_tot) * (double)nups * sizeof(float);
-
-    double t0 = dispersion_delay(1.0, p.band_freq_hi_MHz);
-    double t1 = dispersion_delay(1.0, p.band_freq_lo_MHz);
-
-    this->dm1_index = (t1-t0)/(p.dt_sample/nups) * (ntree-1)/(double)ntree;
-    this->dm1_delay = t0 + (t1-t0)/(2*ntree);
-
-    double tree_dm_max = (ntree-1) / dm1_index;
-    if (p.dm_max > tree_dm_max) {
-	stringstream s;
-	s << "bonsai: max DM in paramfile (=" << p.dm_max << ") exceeds max DM of tree (=" << tree_dm_max << ")\n";
-	throw runtime_error(s.str().c_str());
+    for (int itree = 0; itree < config->ntrees; itree++) {
+	int nt_tree = (config->nt_tree[itree] * config->nds[itree]) / config->nups[itree];
+	xassert(p.nsamples_tot % nt_tree == 0);
     }
 
-    // 
-    // Initialize channel->lambda2 mapping
-    //
-    this->nchan = p.nchan;
-    this->chan_lo_l2.resize(nchan);
-    this->chan_hi_l2.resize(nchan);
-    this->chan_lo_il2.resize(nchan);
-    this->chan_hi_il2.resize(nchan);
+    config->set_nt_data(p.nsamples_per_chunk);
 
-    for (int ichan = 0; ichan < nchan; ichan++) {
-	double tt0 = dispersion_delay(1.0, p.freq_hi_of_channel(ichan));
-	double tt1 = dispersion_delay(1.0, p.freq_lo_of_channel(ichan));
+    // Tree 0 is used to set debug_buffer parameters
+    int ndm = config->tree_size[0];
+    int nt = (p.nsamples_tot / config->nds[0]) * config->nups[0];
+    int ndm_per_trigger = config->ndm_per_trigger[0];
+    int nt_per_trigger = config->nt_per_trigger[0];
 
-	double a = ntree * (tt0 - t0) / (t1 - t0);
-	double b = ntree * (tt1 - t0) / (t1 - t0);
+    xassert(ndm % ndm_per_trigger == 0);
+    xassert(nt % nt_per_trigger == 0);
 
-	xassert(a > -1.0e-10);
-	xassert(a < b);
-	xassert(b < ntree + 1.0e-10);
+    this->search_params = p;
+    this->debug_buffer_ndm = ndm / ndm_per_trigger;
+    this->debug_buffer_nt = nt / nt_per_trigger;
 
-	int ia = max((int)a, 0);
-	int ib = min((int)b, ntree-1);
-	xassert(ia <= ib);
-
-	chan_lo_l2[ichan] = a;
-	chan_hi_l2[ichan] = b;
-	chan_lo_il2[ichan] = ia;
-	chan_hi_il2[ichan] = ib;
-    }
-
-    //
-    // Initialize (DM, undersample_phase) weight array
-    //
-    this->weight_arr.resize(ntree * nups);
-    memset(&weight_arr[0], 0, weight_arr.size() * sizeof(weight_arr[0]));
-
-    vector<int> offsets(ntree);
-    vector<int> scratch(ntree/2);
-    vector<double> scratch2(ntree);
-
-    for (int idm = 0; idm < ntree; idm++) {
-	get_tree_offsets(&offsets[0], depth, idm, &scratch[0]);
-
-	for (int s = 0; s < nups; s++) {
-	    double w = 0.0;
-	    for (int ichan = 0; ichan < nchan; ichan++) {
-		w += w2(chan_lo_l2[ichan], chan_hi_l2[ichan], 
-			chan_lo_il2[ichan], chan_hi_il2[ichan], 
-			ntree, s, nups, &offsets[0], &scratch2[0]);
-	    }
-
-	    xassert(w > 0.0);
-	    weight_arr[idm*nups + s] = 1.0 / sqrt(w);
-	}
-    }
-    
-    //
-    // Print "occupancy" of the tree (number of lambda^2 channels associated to 
-    // each frequency channel).  I just like to look at this once in a while!
-    //
-    vector<int> occupancy;
-
-    for (int ichan = 0; ichan < nchan; ichan++) {
-	int j = chan_hi_il2[ichan] - chan_lo_il2[ichan];
-	xassert(j >= 0);
-
-	while ((int)occupancy.size() <= j)
-	    occupancy.push_back(0);
-
-	occupancy[j]++;
-    }
-
-    cout << name << " initialized, tree_dm_max=" << tree_dm_max << ", occupancy = [";
-    for (int i = 0; i < (int)occupancy.size(); i++)
-	cout << " " << occupancy[i];
-    cout << " ]" << endl;
-
-    if (depth <= 5) {
-	cout << name << " depth <= 5, running unit tests\n";
-	this->run_unit_tests();
-    }
+    // FIXME loose end here: enable memory profiling
+    this->search_gb = 0.1;
 }
 
-void frb_bonsai_search_algorithm::remap_channels(float *buf, const float *chunk) const
+
+//
+// Called whenever a new simulation is processed.
+// As described above, we allocate the bonsai::dedisperser object here.
+//
+void frb_bonsai_search_algorithm::search_start(int mpi_rank_within_node)
 {
-    int nt_wide = search_params.nsamples_per_chunk;
-    int nt_narrow = search_params.nsamples_per_chunk * nups;
+    if (this->dp)
+	throw runtime_error("frb_bonsai_search_algorithm::search_start(): dedisperser pointer is set?!");
 
-    memset(buf, 0, ntree * nt_narrow * sizeof(float));
-
-    for (int ichan = 0; ichan < nchan; ichan++) {
-	double a = chan_lo_l2[ichan];
-	double b = chan_hi_l2[ichan];
-	int ia = chan_lo_il2[ichan];
-	int ib = chan_hi_il2[ichan];
-
-	for (int itree = ia; itree <= ib; itree++) {
-	    double ii = (double)itree;  // std::max gets confused by types otherwise
-	    double wt = (min(b,ii+1) - max(a,ii)) / (b-a);
-	    
-	    for (int it = 0; it < nt_wide; it++)
-		for (int it2 = it*nups; it2 < (it+1)*nups; it2++)
-		    buf[itree*nt_narrow + it2] += wt * chunk[ichan*nt_wide + it];
-	}
-    }
-}
-
-void frb_bonsai_search_algorithm::search_start()
-{
+    this->dp = make_shared<frb_olympics_dedisperser> (*config, mpi_rank_within_node);
     this->search_result = -1.0e30;
+
+    dp->debug_buffer_ndm = this->debug_buffer_ndm;
+    dp->debug_buffer_nt = this->debug_buffer_nt;
+
+    // Must always be called after calling dedisperser constructor
+    dp->spawn_slave_threads();
 }
 
+
+//
+// Called for each chunk of data in the frb_olympics simulation.
+//
 void frb_bonsai_search_algorithm::search_chunk(const float *chunk, int ichunk, float *debug_buffer)
 {
-    // incremental search not supported yet
-    xassert(ichunk == 0);
+    // libbonsai channel ordering is reversed relative to frb_olympics, so use negative stride
+    const float *data = &chunk[(search_params.nchan-1) * search_params.nsamples_per_chunk];
+    int data_stride = -search_params.nsamples_per_chunk;
 
-    int nt_narrow = search_params.nsamples_per_chunk * nups;
-    double dt_narrow = search_params.dt_sample / nups;
+    // The frb_olympics_dedisperser doesn't actually modify the chunk in its preprocess_data() virtual, so const_cast is OK here.
+    dp->debug_buffer = debug_buffer;
+    dp->run(const_cast<float *> (data), data_stride);
+    dp->debug_buffer = nullptr;
 
-    vector<float> buf(ntree*nt_narrow, 0.0);
-
-    remap_channels(&buf[0], chunk);
-    do_tree_transform(&buf[0], depth, nt_narrow);
-
-    // range of DM indices to be searched
-    int idm0 = (int)(search_params.dm_min * dm1_index);      // round down
-    int idm1 = (int)(search_params.dm_max * dm1_index) + 1;  // round up
-
-    // loop over trial DM's, keeping in mind that the tree uses bit-reversed indexing
-    for (int itree = 0; itree < ntree; itree++) {
-	int idm = bit_reverse(itree, depth);
-	if ((idm < idm0) || (idm >= idm1))
-	    continue;
-
-	double dm = idm / dm1_index;
-
-	double t0, t1;
-	search_params.get_allowed_arrival_times(t0, t1, 0.0, dm, 0.0);
-
-	// convert to buffer indices (still floating-point though)
-	t0 = (t0 + dm * dm1_delay) / dt_narrow;
-	t1 = (t1 + dm * dm1_delay) / dt_narrow;
-
-	// clamp and round
-	int it0 = max((int)(t0), 0);
-	int it1 = min((int)(t1+2), nt_narrow-idm);
-
-	for (int it = it0; it < it1; it++) {
-	    float w = weight_arr[idm*nups + (it%nups)];
-	    this->search_result = max(this->search_result, w * buf[itree*nt_narrow+it]);
-	}
-
-	if (debug_buffer != NULL) {
-	    for (int it = it0; it < it1; it++) {
-		float w = weight_arr[idm*nups + (it%nups)];
-		debug_buffer[idm*debug_buffer_nt + it] = w * buf[itree*nt_narrow + it];
-	    }
-	}
-    }
+    // FIXME it would make more sense to put this in search_end(), but this currently doesn't work.
+    this->search_result = dp->global_max_trigger;
 }
 
+
+//
+// Called at the end of each simulation.
+// As described above, we deallocate the bonsai::dedisperser object here.
+//
 void frb_bonsai_search_algorithm::search_end()
 {
-    xassert(this->search_result > -1.0e30);
+    if (!this->dp)
+	throw runtime_error("frb_bonsai_search_algorithm::search_end(): dedisperser pointer is not set?!");
+
+    // It's important to call dedisperser::terminate() before destroying the dedisperser object
+    this->dp->terminate();
+
+    this->dp = shared_ptr<frb_olympics_dedisperser> ();
 }
 
-void frb_bonsai_search_algorithm::run_unit_tests() const
+
+frb_search_algorithm_base *bonsai(const string &hdf5_filename)
 {
-    const double a = 31.3849;
-    const double b = 17.3218;
-
-    int nt = ntree + 10;
-
-    vector<int> scratch(ntree);
-    vector<int> all_offsets(ntree*ntree);
-    vector<float> buf(ntree*nt);
-    vector<float> scratch2(nt);
-
-    for (int idm = 0; idm < ntree; idm++)
-	get_tree_offsets(&all_offsets[idm*ntree], depth, idm, &scratch[0]);
-
-    for (int ichan = 0; ichan < ntree; ichan++) {
-	memset(&buf[0], 0, buf.size() * sizeof(buf[0]));
-	for (int it = 0; it < nt; it++)
-	    buf[ichan*nt + it] = a*ichan + b*it;
-
-	do_tree_transform(&buf[0], depth, nt);
-
-	for (int itree = 0; itree < ntree; itree++) {
-	    int idm = bit_reverse(itree, depth);
-	    int delay = all_offsets[idm*ntree + ichan];
-
-	    for (int it = 0; it < nt-idm; it++) {
-		float expected = a*ichan + b*(it+delay);
-		if (fabs(buf[itree*nt+it] - expected) < 1.0e-6)
-		    continue;
-
-		cout << "test_offsets FAILED: depth=" << depth << " idm=" << idm << " ichan=" << ichan
-		     << " it=" << it << " delay=" << delay << " expected=" << expected 
-		     << " actual=" << buf[itree*nt+it] << endl;
-
-		exit(1);
-	    }
-	}
-    }
-
-    cout << "    test_offsets: pass (depth=" << depth << ")" << endl;
-    
-    // And now a ridiculously slow way to compute the weight_arr
-
-    int nt_wide = search_params.nsamples_per_chunk;
-    int nt_narrow = nt_wide * nups;
-
-    vector<float> chunk(nchan * nt_wide);
-    vector<float> buf2(ntree * nt_narrow);
-    vector<double> acc(ntree * nups, 0.0);
-
-    for (int ichan = 0; ichan < nchan; ichan++) {
-	int max_samp = (chan_hi_il2[ichan] + nups - 1) / nups;	
-	xassert(max_samp < nt_wide);
-
-	for (int isamp = 0; isamp <= max_samp; isamp++) {
-	    memset(&chunk[0], 0, chunk.size() * sizeof(chunk[0]));
-	    chunk[ichan*nt_wide + isamp] = 1.0;
-
-	    this->remap_channels(&buf2[0], &chunk[0]);
-	    do_tree_transform(&buf2[0], depth, nt_narrow);
-
-	    for (int itree = 0; itree < ntree; itree++) {
-		int idm = bit_reverse(itree, depth);
-
-		for (int s = 0; s < nups; s++) 
-		    acc[idm*nups + s] += square(buf2[itree*nt_narrow + s]);
-	    }
-	}
-    }
-
-    for (int idm = 0; idm < ntree; idm++) {
-	for (int s = 0; s < nups; s++) {
-	    xassert(acc[idm*nups+s] > 0.0);
-	    
-	    double w1 = weight_arr[idm*nups+s];
-	    double w2 = 1.0 / sqrt(acc[idm*nups+s]);
-
-	    if (fabs(w1-w2) < 1.0e-3)
-		continue;
-
-	    cout << "test_weights FAILED: idm=" << idm << ", s=" << s << ": w1=" << w1 << ", w2=" << w2 << ", diff=" << fabs(w1-w2) << endl;
-	    exit(1);
-	}
-    }
-
-    cout << "    test_weights: pass (depth=" << depth << ", nchan=" << nchan << ", nups=" << nups << ")" << endl;
-}
-
-frb_search_algorithm_base *bonsai(int ntree, int nupsample)
-{
-    return new frb_bonsai_search_algorithm(ntree, nupsample);
+    return new frb_bonsai_search_algorithm(hdf5_filename);
 }
 
 

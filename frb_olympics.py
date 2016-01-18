@@ -69,9 +69,10 @@ which implements the following methods:
          self.debug_buffer_ndm
          self.debug_buffer_nt
 
-   search_start(self):
+   search_start(self, mpi_rank_within_node):
        Called once per searched timestream (unlike search_init(), which is only called once, period).
        Does per-timestream initializations, such as allocating buffers.
+       The 'mpi_rank_within_node' argument is sometimes useful for pinning threads to cores.
 
    search_chunk(self, chunk, ichunk, debug_buffer=None):
        This is the main routine which does the actual search.  Its job is to set
@@ -126,9 +127,9 @@ import sys
 import numpy as np
 
 # cython imports, including the search algorithms 
-#   { simple_direct, simple_tree, sloth, bonsai}
+#   { simple_direct, sloth, bonsai }
 from frb_olympics_c import frb_rng, frb_pulse, frb_search_params, \
-    simple_direct, simple_tree, sloth, bonsai, sloth_sm_subsearch
+    simple_direct, sloth, bonsai, sloth_sm_subsearch
 
 # Alex Josephy FDMT code
 from frb_fdmt import fdmt
@@ -141,6 +142,9 @@ from frb_downsample import downsample
 # with a different chunk size (useful for debugging incremental search)
 from frb_rechunk import rechunk
 
+# another wrapper algorithm; this one combines multiple algorithms
+# (e.g. trees with different dm_max and downsampling) and returns the max trigger
+from frb_combiner import combiner
 
 ####################################################################################################
 #
@@ -292,8 +296,8 @@ def init_algorithms(search_params):
     ini_flag = True
 
 
-def enumerate_algorithms_with_memhack(bracket_search=True):
-    """Generates (ialgo,algo) pairs."""
+def enumerate_algorithms_with_memhack():
+    """Generates (ialgo,algo) pairs.  Note that this calls search_start() and search_end() "under the hood"."""
 
     for (ialgo,(algo,memhack)) in enumerate(zip(algo_list,memhack_list)):
         assert memhack > 0
@@ -305,13 +309,11 @@ def enumerate_algorithms_with_memhack(bracket_search=True):
         for i in xrange(nbarriers1):
             mpi_barrier()
 
-        if bracket_search:
-            algo.search_start()
+        algo.search_start(mpi_rank_within_node // memhack)
 
         yield (ialgo, algo)
 
-        if bracket_search:
-            algo.search_end()
+        algo.search_end()
         
         for i in xrange(nbarriers2):
             mpi_barrier()
@@ -325,32 +327,36 @@ class comparison_outputs:
         assert noise_data.ndim == 2
         assert pulse_data.ndim == 2
         assert pulse_data.shape[1] == noise_data.shape[1] + 5
-        assert noise_data.shape[0] >= 2
-        assert pulse_data.shape[1] >= 1
-
-        self.noise_data = noise_data
-        self.nnoise = self.noise_data.shape[0]
-        self.nalgo = self.noise_data.shape[1]
-        self.noise_mean = np.mean(self.noise_data, axis=0)
-        self.noise_stddev = np.std(self.noise_data, axis=0)
 
         self.npulse = pulse_data.shape[0]
+        self.nnoise = noise_data.shape[0]
+        self.nalgo = noise_data.shape[1]
+
+        if self.nnoise >= 2:
+            self.noise_mean = np.mean(noise_data, axis=0)
+            self.noise_stddev = np.std(noise_data, axis=0)
+
         self.pulse_arrival_time = pulse_data[:,0]
         self.pulse_intrinsic_width = pulse_data[:,1]
         self.pulse_dm = pulse_data[:,2]
         self.pulse_sm = pulse_data[:,3]
         self.pulse_beta = pulse_data[:,4]
         self.pulse_data = pulse_data[:,5:]
+        self.noise_data = noise_data
 
-        self.pulse_sigma = (self.pulse_data - self.noise_mean[np.newaxis,:]) / self.noise_stddev[np.newaxis,:]
-        self.pulse_sigmap = (self.pulse_data - self.noise_mean[np.newaxis,:])
+        if self.nnoise >= 2 and self.npulse >= 1:
+            # "Sigma" statistic (to be replaced later by something better)
+            self.pulse_sigma = (self.pulse_data - self.noise_mean[np.newaxis,:]) / self.noise_stddev[np.newaxis,:]
+
         self.search_params = search_params
 
 
     def plot_histogram(self, ialgo, filename, xmax=None):
         import matplotlib.pyplot as plt
 
+        assert self.nnoise > 0 and self.npulse > 0
         assert 0 <= ialgo < self.nalgo
+
         plt.hist(self.noise_data[:,ialgo], label='noise-only sims')
         plt.hist(self.pulse_data[:,ialgo], label='pulse-only sims')
 
@@ -381,6 +387,8 @@ class comparison_outputs:
 
         import matplotlib.pyplot as plt
 
+        assert self.npulse > 0
+
         if ialgo_list is None:
             ialgo_list = range(self.nalgo)
 
@@ -407,10 +415,14 @@ class comparison_outputs:
             x_todo.append((self.pulse_sm, 'SM', '_sm', 'sm_min', 'sm_max'))
         if (np.max(self.pulse_beta) - np.min(self.pulse_beta)) > 1.0e-3:
             x_todo.append((self.pulse_beta, 'spectral index', '_beta', 'beta_min', 'beta_max'))
+        if (np.max(self.pulse_intrinsic_width) - np.min(self.pulse_intrinsic_width)) > 1.0e-5:
+            x_todo.append((self.pulse_intrinsic_width, 'intrinsic_width', '_width', 'width_min', 'width_max'))
 
         # (ydata, ylabel, ystem) triples
-        y_todo = [ (self.pulse_sigma, r"$\sigma$", '_sigma'),
-                   (self.pulse_sigmap, r"$\sigma'$", '_sigmap') ]
+        y_todo = [ (self.pulse_data / 30.0, r"$\sigma'$", '_sigmap') ]
+        if hasattr(self, 'pulse_sigma'):
+            y_todo.append((self.pulse_sigma, r"$\sigma$", '_sigma'))
+
                    
         for (xdata, xlabel, xstem, xmin_str, xmax_str) in x_todo:
             for (ydata, ylabel, ystem) in y_todo:

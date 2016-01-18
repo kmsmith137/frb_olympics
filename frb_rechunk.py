@@ -33,8 +33,8 @@ class rechunk:
         self.search_gb = self.algo.search_gb + (1.0e-9 * p.nchan * self.new_nsamples_per_chunk * 4)
 
 
-    def search_start(self):
-        self.algo.search_start()
+    def search_start(self, mpi_rank_within_node):
+        self.algo.search_start(mpi_rank_within_node)
         self.search_result = self.algo.search_result
         
         self.tbuf = np.zeros((self.search_params.nchan, self.new_nsamples_per_chunk), dtype=np.float32)

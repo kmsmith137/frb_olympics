@@ -131,6 +131,9 @@ pulse_tab = frb_olympics.mpi_gather(pulse_tab)
 
 
 if frb_olympics.mpi_rank == 0:
+    noise_data = np.zeros((0, nalgo))
+    pulse_data = np.zeros((0, nalgo+5))
+
     if nmc_noise_tot > 0:
         noise_data = np.concatenate(score_noise)
         noise_filename = output_stem + '_noise.txt'
@@ -150,8 +153,7 @@ if frb_olympics.mpi_rank == 0:
 
         np.savetxt(f, pulse_data)
         print 'wrote %s' % pulse_filename
-    
-    if (nmc_noise_tot >= 2) and (nmc_pulse_tot >= 1):
+
         import matplotlib
         matplotlib.use('Agg')
 
