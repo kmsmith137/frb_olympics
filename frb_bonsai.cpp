@@ -220,9 +220,13 @@ void frb_bonsai_search_algorithm::search_chunk(const float *chunk, int ichunk, f
     const float *data = &chunk[(search_params.nchan-1) * search_params.nsamples_per_chunk];
     int data_stride = -search_params.nsamples_per_chunk;
 
+    // FIXME this is a kludge.
+    vector<float> weight_vec(search_params.nchan * search_params.nsamples_per_chunk, 1.0);
+    float *weights = &weight_vec[(search_params.nchan-1) * search_params.nsamples_per_chunk];
+    
     // The frb_olympics_dedisperser doesn't actually modify the chunk in its preprocess_data() virtual, so const_cast is OK here.
     dp->debug_buffer = debug_buffer;
-    dp->run(const_cast<float *> (data), data_stride);
+    dp->run(const_cast<float *> (data), weights, data_stride);
     dp->debug_buffer = nullptr;
 
     // FIXME it would make more sense to put this in search_end(), but this currently doesn't work.
