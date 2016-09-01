@@ -11,18 +11,16 @@ beta_min = 0.0
 beta_max = 0.0
 
 # Intrinsic pulse width range
-width_min = 0.0
-width_max = 0.0
+width_sec_min = 0.0
+width_sec_max = 0.0
 
 # Number of frequency channels (assumed equally spaced) and frequency range in MHz
-nchan = 128
-freq_lo = 593.75
-freq_hi = 606.25
+nfreq = 128
+freq_lo_MHz = 593.75
+freq_hi_MHz = 606.25
 
 # Sample length in seconds
-dt_sample = 1.0e-3   # 1 msec
+dt_sec = 1.0e-3   # 1 msec
 
 # Buffer sizes
-# Note: setting nsamples_per_chunk < nsamples_tot will test incremental search
-nsamples_tot = 8192
-nsamples_per_chunk = 8192
+nsamples = 8192
