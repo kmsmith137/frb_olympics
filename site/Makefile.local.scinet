@@ -18,7 +18,7 @@ PYTHON_INCDIR=$(HOME)/include/python2.7
 # C++ command line
 # Must support c++11
 # Don't forget -fPIC (no -pthread needed)
-CPP=g++ -std=c++11 -fPIC -Wall -O3 -march=native -ffast-math -funroll-loops -I. -I$(INCDIR) -I$(PYTHON_INCDIR)
+CPP=g++ -std=c++11 -fPIC -Wall -Wno-unused-local-typedefs -O3 -march=native -ffast-math -funroll-loops -I. -I$(INCDIR) -I$(PYTHON_INCDIR)
 
 # Extra linker flags when creating a shared library or exectutable from .o files
 # Don't forget to put -L. and -L$(LIBDIR) on the command line (in this order)
