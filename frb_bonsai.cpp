@@ -78,7 +78,7 @@ struct frb_olympics_dedisperser : public bonsai::dedisperser {
 	  debug_buffer_nt(0), debug_buffer_tpos(0)
     { }
 
-    virtual void preprocess_data(float *data, int data_stride) { return; }
+    virtual void preprocess_data(float *data, float *weights, int data_stride) { return; }
     virtual void finalize() { return; }
 
     virtual void process_triggers(int itree, const bonsai::trigger_set &ts)
