@@ -6,8 +6,8 @@
 #  PYDIR
 #  CPP
 #
-# See Makefile.local.example for an example (in fact, you may just
-# be able to do 'cp Makefile.local.example Makefile.local)
+# See site/Makefile.local.* for an example (in fact, you may just be able to
+# symlink or copy one of these files to ./Makefile.local)
 #
 include Makefile.local
 
