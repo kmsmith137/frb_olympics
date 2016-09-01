@@ -11,6 +11,7 @@
 #include <sys/time.h>
 
 #include <vector>
+#include <sstream>
 #include <iostream>
 #include <exception>
 
@@ -85,9 +86,9 @@ template<typename T> inline T xlexical_cast(const std::string &s, const std::str
     try {
 	return boost::lexical_cast<T>(s);
     } catch (...) {
-	std::stringstream s;
-	s << prefix << ": couldn't parse token " << s << " (expected type: " << tname<T>() << ")\n";
-	throw std::runtime_error(s.str().c_str());
+	std::stringstream ss;
+	ss << prefix << ": couldn't parse token " << s << " (expected type: " << tname<T>() << ")\n";
+	throw std::runtime_error(ss.str().c_str());
     }
 }
 
