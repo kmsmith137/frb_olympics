@@ -1,3 +1,4 @@
+import sys
 import copy
 import numpy as np
 
@@ -103,19 +104,20 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         rf_pipelines.py_wi_stream.__init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, dt_sample, nt_chunk)
         
         self.nt_tot = nt_tot
+        self.nt_chunk = nt_chunk
         self.set_state(state)
 
 
     def stream_body(self, run_state):
-        run_state.start_substream(t0=0.0)
+        run_state.start_substream(0.0)
 
         it = 0
         while it < self.nt_tot:
             nt = min(self.nt_tot-it, self.nt_chunk)
             intensity = self.state.standard_normal((self.nfreq, nt))
-            weights = np.ones((self.nfreq, nt))
+            weights = np.ones((self.nfreq, nt), dtype=np.float)
             run_state.write(intensity, weights)
-            it += nt_chunk
+            it += self.nt_chunk
 
         run_state.end_substream()
         
