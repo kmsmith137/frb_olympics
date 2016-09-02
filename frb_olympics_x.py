@@ -1,4 +1,7 @@
-# import rf_pipelines
+import copy
+import numpy as np
+
+import rf_pipelines
 
 
 class search_params:
@@ -78,3 +81,52 @@ class search_params:
             raise RuntimeError("%s: parse error in field '%s' (value='%s')" % (self.filename, field_name, kv_pairs[field_name]))
 
         setattr(self, field_name, field_value)
+
+
+class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
+    """
+    Similar to rf_pipelines.gaussian_noise_stream, but allows the stream to be rerun by saving its state:
+    
+        s = rerunnable_gaussian_noise_stream(...)
+        saved_state = s.get_state()
+           # ... run stream ...
+        s.set_state(saved_state)
+           # ... rerunning stream will give same output ...
+    """
+
+    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, state=None, nt_chunk=None):
+        if nt_chunk is None:
+            nt_chunk = min(0124, nt_tot)
+        if nt_tot <= 0:
+            raise RuntimeError('rerunnable_gaussian_noise_stream constructor: nt_tot must be > 0')
+
+        rf_pipelines.py_wi_stream.__init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, dt_sample, nt_chunk)
+        
+        self.nt_tot = nt_tot
+        self.set_state(state)
+
+
+    def stream_body(self, run_state):
+        run_state.start_substream(t0=0.0)
+
+        it = 0
+        while it < self.nt_tot:
+            nt = min(self.nt_tot-it, self.nt_chunk)
+            intensity = self.state.standard_normal((self.nfreq, nt))
+            weights = np.ones((self.nfreq, nt))
+            run_state.write(intensity, weights)
+            it += nt_chunk
+
+        run_state.end_substream()
+        
+
+    def get_state(self):
+        return copy.copy(rand_state)
+
+
+    def set_state(self, state):
+        if state is None:
+            self.state = np.random.RandomState()
+        else:
+            assert isinstance(state, np.random.RandomState)
+            self.state = copy.copy(state)
