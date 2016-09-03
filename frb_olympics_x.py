@@ -10,6 +10,65 @@ def dispersion_delay(dm, freq_MHz):
     return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
 
+####################################################################################################
+
+
+# FIXME just one dedisperser for now
+def run_monte_carlo(sp, dedisperser, snr=30.):
+    """Returns json object (not string)."""
+
+    assert isinstance(sp, search_params)
+    assert isinstance(dedisperser, rf_pipelines.wi_transform)
+
+    stream = rerunnable_gaussian_noise_stream(nfreq = sp.nfreq,
+                                              nt_tot = sp.nsamples, 
+                                              freq_lo_MHz = sp.freq_lo_MHz, 
+                                              freq_hi_MHz = sp.freq_hi_MHz, 
+                                              dt_sample = sp.dt_sec)
+
+    # Generate random FRB params
+    true_dm = np.random.uniform(sp.dm_min, sp.dm_max)
+    true_sm = np.random.uniform(sp.sm_min, sp.sm_max)
+    true_beta = np.random.uniform(sp.beta_min, sp.beta_max)
+    true_width = np.random.uniform(sp.width_sec_min, sp.width_sec_max)
+    
+    # Dispersion delays at DM of FRB
+    dt_initial = dispersion_delay(true_dm, sp.freq_hi_MHz)
+    dt_final = dispersion_delay(true_dm, sp.freq_lo_MHz)
+    dt_band = dt_final - dt_initial
+
+    timestream_length = sp.nsamples * sp.dt_sec
+    tc_min = 0.05*timestream_length + dt_band/2.0
+    tc_max = 0.95*timestream_length - dt_band/2.0
+    
+    assert tc_min < tc_max
+    true_tc = np.random.uniform(tc_min, tc_max);
+    true_tu = true_tc - (dt_initial + dt_final) / 2.
+
+    t_frb = rf_pipelines.frb_injector_transform(snr = snr,
+                                                undispersed_arrival_time = true_tu,
+                                                dm = true_dm,
+                                                intrinsic_width = true_width,
+                                                sm = true_sm,
+                                                spectral_index = true_beta)
+
+    stream.run([t_frb, dedisperser])
+
+    json_output = { 'true_snr': snr,
+                    'true_dm': true_dm,
+                    'true_sm': true_sm,
+                    'true_beta': true_beta,
+                    'true_width': true_width,
+                    'true_tcentral': true_tc }
+
+    # FIXME add code to extract json from pipeline run and add it to json_output
+
+    return json_output
+
+
+####################################################################################################
+
+
 class search_params:
     def __init__(self, filename):
         self.filename = filename
@@ -98,6 +157,9 @@ class search_params:
         setattr(self, field_name, field_value)
 
 
+####################################################################################################
+
+
 class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
     """
     Similar to rf_pipelines.gaussian_noise_stream, but allows the stream to be rerun by saving its state:
@@ -146,3 +208,4 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         else:
             assert isinstance(state, np.random.RandomState)
             self.state = copy.copy(state)
+
