@@ -5,6 +5,11 @@ import numpy as np
 import rf_pipelines
 
 
+# Note: cut-and-paste from "simpulse"
+def dispersion_delay(dm, freq_MHz):
+    return 4.148806e3 * dm / (freq_MHz * freq_MHz);
+
+
 class search_params:
     def __init__(self, filename):
         self.filename = filename
