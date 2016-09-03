@@ -50,6 +50,15 @@ class search_params:
         assert self.width_sec_min <= self.width_sec_max, filename + ": failed assert: width_sec_min <= width_sec_max"
         assert self.freq_lo_MHz < self.freq_hi_MHz, filename + ": failed assert: freq_lo_MHz < freq_hi_MHz"
 
+        # One last, less trivial consistency test: the total timestream length must be at least 
+        # 20% larger than the max in-band dispersion delay.
+
+        timestream_length = self.nsamples * self.dt_sec
+        max_dispersion_delay = dispersion_delay(self.dm_max, self.freq_lo_MHz) - dispersion_delay(self.dm_max, self.freq_hi_MHz)
+
+        assert timestream_length > 1.2 * max_dispersion_delay, \
+            filename + ': failed assert: timestream_length > 1.2 * max_dispersion_delay'
+
 
     @staticmethod
     def parse_file(filename):
