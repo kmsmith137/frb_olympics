@@ -1,5 +1,6 @@
 import sys
 import copy
+import json
 import numpy as np
 
 import rf_pipelines
@@ -13,18 +14,12 @@ def dispersion_delay(dm, freq_MHz):
 ####################################################################################################
 
 
-# FIXME just one dedisperser for now
-def run_monte_carlo(sp, dedisperser, snr=30.):
+def run_monte_carlo(sp, stream, dedisperser_list, snr=30.):
     """Returns json object (not string)."""
 
     assert isinstance(sp, search_params)
-    assert isinstance(dedisperser, rf_pipelines.wi_transform)
-
-    stream = rerunnable_gaussian_noise_stream(nfreq = sp.nfreq,
-                                              nt_tot = sp.nsamples, 
-                                              freq_lo_MHz = sp.freq_lo_MHz, 
-                                              freq_hi_MHz = sp.freq_hi_MHz, 
-                                              dt_sample = sp.dt_sec)
+    assert isinstance(stream, rerunnable_gaussian_noise_stream)
+    assert all(isinstance(dedisperser, rf_pipelines.wi_transform) for dedisperser in dedisperser_list)
 
     # Generate random FRB params
     true_dm = np.random.uniform(sp.dm_min, sp.dm_max)
@@ -33,17 +28,16 @@ def run_monte_carlo(sp, dedisperser, snr=30.):
     true_width = np.random.uniform(sp.width_sec_min, sp.width_sec_max)
     
     # Dispersion delays at DM of FRB
-    dt_initial = dispersion_delay(true_dm, sp.freq_hi_MHz)
-    dt_final = dispersion_delay(true_dm, sp.freq_lo_MHz)
-    dt_band = dt_final - dt_initial
+    true_dt_initial = dispersion_delay(true_dm, sp.freq_hi_MHz)
+    true_dt_final = dispersion_delay(true_dm, sp.freq_lo_MHz)
 
     timestream_length = sp.nsamples * sp.dt_sec
-    tc_min = 0.05*timestream_length + dt_band/2.0
-    tc_max = 0.95*timestream_length - dt_band/2.0
+    tu_min = 0.05*timestream_length - true_dt_initial
+    tu_max = 0.95*timestream_length - true_dt_final
     
-    assert tc_min < tc_max
-    true_tc = np.random.uniform(tc_min, tc_max);
-    true_tu = true_tc - (dt_initial + dt_final) / 2.
+    assert tu_min < tu_max
+    true_tu = np.random.uniform(tu_min, tu_max);
+    true_tc = true_tu + (true_dt_initial + true_dt_final) / 2.
 
     t_frb = rf_pipelines.frb_injector_transform(snr = snr,
                                                 undispersed_arrival_time = true_tu,
@@ -52,16 +46,51 @@ def run_monte_carlo(sp, dedisperser, snr=30.):
                                                 sm = true_sm,
                                                 spectral_index = true_beta)
 
-    stream.run([t_frb, dedisperser])
-
+    # Start building up output
     json_output = { 'true_snr': snr,
                     'true_dm': true_dm,
                     'true_sm': true_sm,
                     'true_beta': true_beta,
                     'true_width': true_width,
-                    'true_tcentral': true_tc }
+                    'true_tcentral': true_tc,
+                    'search_results': [ ] }
 
-    # FIXME add code to extract json from pipeline run and add it to json_output
+    saved_state = stream.get_state()
+
+    for dedisperser in dedisperser_list:
+        stream.set_state(saved_state)
+
+        pipeline_json = stream.run([t_frb, dedisperser], return_json=True)
+        pipeline_json = json.loads(pipeline_json)   # Temporary kludge (I think)
+        pipeline_json = pipeline_json[0]['transforms'][-1]
+
+        if not pipeline_json.has_key('frb_global_max_trigger'):
+            raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger' field")
+        if not pipeline_json.has_key('frb_global_max_trigger_dm'):
+            raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_dm' field")
+        
+        recovered_snr = pipeline_json['frb_global_max_trigger']
+        recovered_dm = pipeline_json['frb_global_max_trigger_dm']
+
+        recovered_dt_initial = dispersion_delay(recovered_dm, sp.freq_hi_MHz)
+        recovered_dt_final = dispersion_delay(recovered_dm, sp.freq_lo_MHz)
+
+        if pipeline_json.has_key('frb_global_max_trigger_tcentral'):
+            recovered_tc = pipeline_json['frb_global_max_trigger_tcentral']
+        elif pipeline_json.has_key('frb_global_max_trigger_tinitial'):
+            recovered_tc = pipeline_json['frb_global_max_trigger_tinitial'] + (recovered_dt_final - recovered_dt_initial) / 2.0
+        elif pipeline_json.has_key('frb_global_max_trigger_tfinal'):
+            recovered_tc = pipeline_json['frb_global_max_trigger_tfinal'] - (recovered_dt_final - recovered_dt_initial) / 2.0
+        elif pipeline_json.has_key('frb_global_max_trigger_final'):
+            recovered_tc = pipeline_json['frb_global_max_trigger_tundisp'] - (recovered_dt_initial + recovered_dt_final) / 2.0
+        else:
+            raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_t*' field")
+
+        search_results_json = { 'recovered_snr': recovered_snr,
+                                'recovered_dm': recovered_dm,
+                                'recovered_tcentral' : recovered_tc }
+
+        json_output['search_results'].append(search_results_json)
 
     return json_output
 
@@ -157,6 +186,16 @@ class search_params:
         setattr(self, field_name, field_value)
 
 
+    def make_noise_stream(self, nt_chunk=None):
+        return rerunnable_gaussian_noise_stream(nfreq = self.nfreq,
+                                                nt_tot = self.nsamples, 
+                                                freq_lo_MHz = self.freq_lo_MHz, 
+                                                freq_hi_MHz = self.freq_hi_MHz, 
+                                                dt_sample = self.dt_sec,
+                                                nt_chunk = nt_chunk)
+
+
+
 ####################################################################################################
 
 
@@ -199,7 +238,7 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         
 
     def get_state(self):
-        return copy.copy(rand_state)
+        return copy.copy(self.state)
 
 
     def set_state(self, state):
@@ -208,4 +247,3 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         else:
             assert isinstance(state, np.random.RandomState)
             self.state = copy.copy(state)
-
