@@ -5,6 +5,9 @@ import json
 import itertools
 import numpy as np
 
+import matplotlib; matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 import rf_pipelines
 
 
@@ -75,6 +78,23 @@ else:
     mpi_barrier = lambda: None
 
 
+def init_mpi_log_files(stem):
+    if mpi_size == 1:
+        return
+
+    # redirect stdout, stderr to log files which are unique to this MPI rank
+
+    log_filename = '%s.stdout%d' % (stem, mpi_rank)
+    sys.stderr.write('redirecting stdout -> %s\n' % log_filename)
+    f_log = open(log_filename, 'w')
+    os.dup2(f_log.fileno(), sys.stdout.fileno())
+
+    log_filename = '%s.stderr%d' % (stem, mpi_rank)
+    sys.stderr.write('redirecting stderr -> %s\n' % log_filename)
+    f_log = open(log_filename, 'w')
+    os.dup2(f_log.fileno(), sys.stderr.fileno())
+
+
 ####################################################################################################
 
 
@@ -112,7 +132,7 @@ class olympics:
         self.dedisperser_list.append((name, transform))
 
 
-    def run(self, json_filename, nmc, clobber=False):
+    def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
         if not json_filename.endswith('.json'):
             raise RuntimeError("frb_olympics.olympics.run(): 'json_filename' argument must end in .json")
         
@@ -122,42 +142,54 @@ class olympics:
         if nmc <= 0:
             raise RuntimeError('frb_olympics.olympics.run(): expected nmc > 0')
         
-        if not clobber and os.path.exists(json_filename) and (os.stat(json_filename).st_size > 0):
-            for i in itertools.count():
-                filename2 = '%s.old%d.json' % (json_filename[:-5], i)
-                if not os.path.exists(filename2):
-                    print >>sys.stderr, 'renaming existing file %s -> %s' % (json_filename, filename2)
-                    os.rename(json_filename, filename2)
-                    break
+        if (mpi_size > 1) and mpi_log_files:
+            init_mpi_log_files(stem = json_filename[:-5])
 
-        verb = 'truncating' if os.path.exists(json_filename) else 'creating'
-        print >>sys.stderr, verb, 'file', json_filename
-        f_out = open(json_filename, 'w')
+        if mpi_rank == 0:
+            json_out = { 'simulate_noise': self.simulate_noise,
+                         'snr': self.snr,
+                         'nmc': nmc,
+                         'dedisperser_names': [ ],
+                         'search_params': { },
+                         'sims': [ ] }
+        
+            for (field_name, field_type) in self.sparams.all_fields:
+                json_out["search_params"][field_name] = getattr(self.sparams, field_name)
+            
+            for (dedisperser_name, transform) in self.dedisperser_list:
+                json_out["dedisperser_names"].append(dedisperser_name)
 
-        json_out = { 'simulate_noise': self.simulate_noise,
-                     'snr': self.snr,
-                     'nmc': nmc,
-                     'dedisperser_names': [ ],
-                     'search_params': { },
-                     'sims': [ ] }
+            if not clobber and os.path.exists(json_filename) and (os.stat(json_filename).st_size > 0):
+                for i in itertools.count():
+                    filename2 = '%s.old%d.json' % (json_filename[:-5], i)
+                    if not os.path.exists(filename2):
+                        print >>sys.stderr, 'renaming existing file %s -> %s' % (json_filename, filename2)
+                        os.rename(json_filename, filename2)
+                        break
 
-        for (field_name, field_type) in self.sparams.all_fields:
-            json_out["search_params"][field_name] = getattr(self.sparams, field_name)
+            verb = 'truncating' if os.path.exists(json_filename) else 'creating'
+            print >>sys.stderr, verb, 'file', json_filename
+            f_out = open(json_filename, 'w')
 
-        for (dedisperser_name, transform) in self.dedisperser_list:
-            json_out["dedisperser_names"].append(dedisperser_name)
+        json_sims = [ ]
 
-        for imc in xrange(nmc):
+        for imc in xrange(mpi_rank, nmc, mpi_size):
             print >>sys.stderr, 'frb_olympics: starting Monte Carlo %d/%d' % (imc, nmc)
             json_sim = self.run_one()
-            json_out["sims"].append(json_sim)
+            json_sims.append(json_sim)
 
-        json.dump(json_out, f_out, indent=4)
-        print >>f_out   # extra newline (cosmetic)
-        print >>sys.stderr, 'wrote', json_filename
+        json_sims = mpi_gather(json_sims)
 
-        # make_snr_plots() is defined later in this file
-        make_snr_plots(json_filename, json_out)
+        if mpi_rank == 0:
+            for s in json_sims:
+                json_out['sims'] += s
+
+            json.dump(json_out, f_out, indent=4)
+            print >>f_out   # extra newline (cosmetic)
+            print >>sys.stderr, 'wrote', json_filename
+
+            # make_snr_plots() is defined later in this file
+            make_snr_plots(json_filename, json_out)
 
 
     def run_one(self):
@@ -251,8 +283,6 @@ class olympics:
 
 
 def make_snr_plot(plot_filename, xvec, snr_arr, xmin, xmax, xlabel, dedisperser_names):
-    import matplotlib.pyplot as plt
-
     color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c' ]
 
     xvec = np.array(xvec)
