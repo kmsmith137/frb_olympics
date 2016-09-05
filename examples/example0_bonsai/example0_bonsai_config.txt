@@ -1,0 +1,98 @@
+# bonsai-mkweight example0_bonsai_config.txt example0_bonsai_config.hdf5
+#
+# Some of these parameters have default values and can be omitted, but
+# we include every parameter here for completeness.
+#
+
+#
+# In this simple example, we use two 4K-trees, one of which is upsampled by a factor 2.
+# A note on syntax: it would be equivalent to say 'tree_size = 4096' here, since both tree_size values are the same.
+#
+# Since each tree is size 4096, it will search to a max dispersion delay equal to 4096 "tree" time samples.
+# Since the first tree is upsampled, this will correspond to 2048 and 4096 "input" time samples.
+# In this example, each input sample is 1 msec (see dt_sample) below, and the band is 400-800 MHz (see freq_* below).
+# This works out to a max DM of approximately 100 in the first tree and 200 in the second tree.
+# To go to higher DM, we could either add downsampled trees, or use trees with more than 4K channels.
+#
+tree_size = [ 4096, 4096 ]
+
+# Number of frequency channels in input data.
+nchan = 1024
+
+# Upsampling factor of each tree.
+# The first tree is upsampled by a factor 2 and the second tree is not upsampled.
+nups = [ 2, 1 ]
+
+#
+# Downsampling factor for each tree (optional).  If we wanted to add a third tree
+# with factor-2 downsampling, we could say 'nds = [1,1,2]' here.  This would extend
+# the search to both higher DM and higher intrinsic width.
+#
+nds = [ 1, 1 ]
+
+# Trial scattering measures.  In this simple example, we don't search over scattering.
+nsm = 1         # number of trial scattering measures
+sm_depth = 0    # number of tree iterations remaining when SM fanout occurs (sm_depth=4 is usually a good choice)
+sm_max = 0      # largest trial SM
+
+# Trial spectral indices.  In this simple example, we don't search over spectral index.
+nbeta = 1        # number of trial spectral indices
+beta_depth = 0   # number of tree iterations remaining when spectral index fanout STARTS (beta_depth=log_2(nbeta)+1 is a reasonable default)
+beta_min = 0     # endpoint of searched spectral index range
+beta_max = 0     # endpoint of searched spectral index range
+
+# Input frequency band and time sampling
+freq_lo_MHz = 400.0   # MHz
+freq_hi_MHz = 800.0   # MHz
+dt_sample = 0.001     # seconds
+
+# Number of threads per beam.
+nthreads = 2
+
+#
+# Each tree incrementally processes data in chunks.  nt_tree is the number of "tree" time samples in
+# each chunk.  This is related to the number of "input" time samples by the upsampling or downsampling
+# factor.
+#
+# Note that there is another parameter below, nt_data, which sets the chunk size for delivering input
+# data to the dedisperser.  This is independent of nt_tree.
+#
+# Different values of nt_tree should lead to equivalent transforms (unless the detrending and RFI
+# algorithms depend on it), but it will affect the latency and possibly the running time of the search.
+# (256 or 512 is usually a good choice, although I haven't tested this recently)
+#
+nt_tree = [ 256, 256 ]
+
+#
+# Number of time samples used to "pad" the incremental search.
+# This should really be determined automatically, but I haven't written code to do this yet!
+#
+# So for now you'll need to set it by hand, using the following rules
+#   - take the width of the widest peak-finding kernel (currently 4)
+#   - add a few times the width of a "typical" scattering tail searched at this tree resolution (nontrivial to calculate!)
+#   - round up to nearest multiple of 16 (this is the number of 32-bit floats in a cache line)
+#
+nt_ftree_pad = [ 16, 16 ]
+
+# DM coarse-graining factor (used when making coarse-grained triggers from fine-grained triggers)
+ndm_per_trigger = 64
+
+# Time coarse-graining factor (used when making coarse-grained triggers from fine-grained triggers)
+nt_per_trigger = 64
+
+#
+# Number of time samples in each chunk of instrumental data which is fed to the dedisperser.
+#
+# Note that if you're running the frb_olympics, then the value of nt_data will be overridden by
+# the value of 'nsamples_per_chunk' in search_params.txt.  (See code in frb_olympics/frb_bonsai.cpp)
+#
+# A case where the value of nt_data is meaningful is when timing the code with the 'time-tree' utility.
+#
+nt_data = 1024
+ 
+#
+# This optional parameter determines the point during tree dispersion where we switch from
+# expanding to collapsing tree search, with a buffer in the middle.  There is code to set
+# a reasonable default, so I usually just leave this unspecified in practice.
+#
+ftree_rank = [ 6, 6 ]
