@@ -11,93 +11,127 @@ def dispersion_delay(dm, freq_MHz):
     return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
 
-####################################################################################################
+class olympics:
+    def __init__(self, sparams, snr=30.0, simulate_noise=True):
+        self.simulate_noise = simulate_noise
+        self.snr = snr
 
-
-def run_monte_carlo(sp, stream, dedisperser_list, snr=30.):
-    """Returns json object (not string)."""
-
-    assert isinstance(sp, search_params)
-    assert isinstance(stream, rerunnable_gaussian_noise_stream)
-    assert all(isinstance(dedisperser, rf_pipelines.wi_transform) for dedisperser in dedisperser_list)
-
-    # Generate random FRB params
-    true_dm = np.random.uniform(sp.dm_min, sp.dm_max)
-    true_sm = np.random.uniform(sp.sm_min, sp.sm_max)
-    true_beta = np.random.uniform(sp.beta_min, sp.beta_max)
-    true_width = np.random.uniform(sp.width_sec_min, sp.width_sec_max)
-    
-    # Dispersion delays at DM of FRB
-    true_dt_initial = dispersion_delay(true_dm, sp.freq_hi_MHz)
-    true_dt_final = dispersion_delay(true_dm, sp.freq_lo_MHz)
-
-    timestream_length = sp.nsamples * sp.dt_sec
-    tu_min = 0.05*timestream_length - true_dt_initial
-    tu_max = 0.95*timestream_length - true_dt_final
-    
-    assert tu_min < tu_max
-    true_tu = np.random.uniform(tu_min, tu_max);
-    true_tc = true_tu + (true_dt_initial + true_dt_final) / 2.
-
-    t_frb = rf_pipelines.frb_injector_transform(snr = snr,
-                                                undispersed_arrival_time = true_tu,
-                                                dm = true_dm,
-                                                intrinsic_width = true_width,
-                                                sm = true_sm,
-                                                spectral_index = true_beta)
-
-    # Start building up output
-    json_output = { 'true_snr': snr,
-                    'true_dm': true_dm,
-                    'true_sm': true_sm,
-                    'true_beta': true_beta,
-                    'true_width': true_width,
-                    'true_tcentral': true_tc,
-                    'search_results': [ ] }
-
-    saved_state = stream.get_state()
-
-    for dedisperser in dedisperser_list:
-        stream.set_state(saved_state)
-
-        pipeline_json = stream.run([t_frb, dedisperser], outdir=None, return_json=True)
-
-        # A kludge: eventually, the run() return value will be a json object, but for now it returns
-        # the string representation, which can be converted to a json object by calling json.loads().
-        pipeline_json = json.loads(pipeline_json)
-        
-        # We're only interested in the part of the json output from the last transform (the dedisperser).
-        pipeline_json = pipeline_json[0]['transforms'][-1]
-
-        if not pipeline_json.has_key('frb_global_max_trigger'):
-            raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger' field")
-        if not pipeline_json.has_key('frb_global_max_trigger_dm'):
-            raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_dm' field")
-        
-        recovered_snr = pipeline_json['frb_global_max_trigger']
-        recovered_dm = pipeline_json['frb_global_max_trigger_dm']
-
-        recovered_dt_initial = dispersion_delay(recovered_dm, sp.freq_hi_MHz)
-        recovered_dt_final = dispersion_delay(recovered_dm, sp.freq_lo_MHz)
-
-        if pipeline_json.has_key('frb_global_max_trigger_tcentral'):
-            recovered_tc = pipeline_json['frb_global_max_trigger_tcentral']
-        elif pipeline_json.has_key('frb_global_max_trigger_tinitial'):
-            recovered_tc = pipeline_json['frb_global_max_trigger_tinitial'] + (recovered_dt_final - recovered_dt_initial) / 2.0
-        elif pipeline_json.has_key('frb_global_max_trigger_tfinal'):
-            recovered_tc = pipeline_json['frb_global_max_trigger_tfinal'] - (recovered_dt_final - recovered_dt_initial) / 2.0
-        elif pipeline_json.has_key('frb_global_max_trigger_final'):
-            recovered_tc = pipeline_json['frb_global_max_trigger_tundisp'] - (recovered_dt_initial + recovered_dt_final) / 2.0
+        if isinstance(sparams, search_params):
+            self.sparams = sparams
+        elif isinstance(sparams, basestring):
+            # if 'sparams' is a string, then assume it's the filename
+            self.sparams = search_params(sparams)
         else:
-            raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_t*' field")
+            raise RuntimeError('xx')
 
-        search_results_json = { 'recovered_snr': recovered_snr,
-                                'recovered_dm': recovered_dm,
-                                'recovered_tcentral': recovered_tc }
+        self.stream = rerunnable_gaussian_noise_stream(nfreq = self.sparams.nfreq, 
+                                                       nt_tot = self.sparams.nsamples, 
+                                                       freq_lo_MHz = self.sparams.freq_lo_MHz, 
+                                                       freq_hi_MHz = self.sparams.freq_hi_MHz, 
+                                                       dt_sample = self.sparams.dt_sec,
+                                                       simulate_noise = simulate_noise)
 
-        json_output['search_results'].append(search_results_json)
 
-    return json_output
+        # The dedisperser_list is a list of (name, transform) pairs
+        self.dedisperser_list = [ ]
+
+
+    def add_bonsai(self, config_hdf5_filename, name=None):
+        transform = rf_pipelines.bonsai_dedisperser(config_hdf5_filename)
+
+        if name is None:
+            name = transform.name
+
+        self.dedisperser_list.append((name, transform))
+
+
+    def run(self, outstem, nmc):
+        pass
+
+ 
+    def run_one(self):
+        """Returns json object (not string representation).  Uses current state of stream"""
+
+        if len(self.dedisperser_list) == 0:
+            raise RuntimeError(xx)
+
+        # Generate random FRB params
+        true_dm = np.random.uniform(self.sparams.dm_min, self.sparams.dm_max)
+        true_sm = np.random.uniform(self.sparams.sm_min, self.sparams.sm_max)
+        true_beta = np.random.uniform(self.sparams.beta_min, self.sparams.beta_max)
+        true_width = np.random.uniform(self.sparams.width_sec_min, self.sparams.width_sec_max)
+    
+        # Dispersion delays at DM of FRB
+        true_dt_initial = dispersion_delay(true_dm, self.sparams.freq_hi_MHz)
+        true_dt_final = dispersion_delay(true_dm, self.sparams.freq_lo_MHz)
+
+        timestream_length = self.sparams.nsamples * self.sparams.dt_sec
+        tu_min = 0.05*timestream_length - true_dt_initial
+        tu_max = 0.95*timestream_length - true_dt_final
+        
+        assert tu_min < tu_max
+        true_tu = np.random.uniform(tu_min, tu_max);
+        true_tc = true_tu + (true_dt_initial + true_dt_final) / 2.
+        
+        t_frb = rf_pipelines.frb_injector_transform(snr = self.snr,
+                                                    undispersed_arrival_time = true_tu,
+                                                    dm = true_dm,
+                                                    intrinsic_width = true_width,
+                                                    sm = true_sm,
+                                                    spectral_index = true_beta)
+
+        # Start building up output
+        json_output = { 'true_snr': self.snr,
+                        'true_dm': true_dm,
+                        'true_sm': true_sm,
+                        'true_beta': true_beta,
+                        'true_width': true_width,
+                        'true_tcentral': true_tc,
+                        'search_results': [ ] }
+        
+        saved_state = self.stream.get_state()
+
+        for (name, dedisperser) in self.dedisperser_list:
+            self.stream.set_state(saved_state)
+            
+            pipeline_json = self.stream.run([t_frb, dedisperser], outdir=None, return_json=True)
+            
+            # A kludge: eventually, the run() return value will be a json object, but for now it returns
+            # the string representation, which can be converted to a json object by calling json.loads().
+            pipeline_json = json.loads(pipeline_json)
+            
+            # We're only interested in the part of the json output from the last transform (the dedisperser).
+            pipeline_json = pipeline_json[0]['transforms'][-1]
+            
+            if not pipeline_json.has_key('frb_global_max_trigger'):
+                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger' field")
+            if not pipeline_json.has_key('frb_global_max_trigger_dm'):
+                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_dm' field")
+        
+            recovered_snr = pipeline_json['frb_global_max_trigger']
+            recovered_dm = pipeline_json['frb_global_max_trigger_dm']
+            
+            recovered_dt_initial = dispersion_delay(recovered_dm, self.sparams.freq_hi_MHz)
+            recovered_dt_final = dispersion_delay(recovered_dm, self.sparams.freq_lo_MHz)
+
+            if pipeline_json.has_key('frb_global_max_trigger_tcentral'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tcentral']
+            elif pipeline_json.has_key('frb_global_max_trigger_tinitial'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tinitial'] + (recovered_dt_final - recovered_dt_initial) / 2.0
+            elif pipeline_json.has_key('frb_global_max_trigger_tfinal'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tfinal'] - (recovered_dt_final - recovered_dt_initial) / 2.0
+            elif pipeline_json.has_key('frb_global_max_trigger_final'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tundisp'] - (recovered_dt_initial + recovered_dt_final) / 2.0
+            else:
+                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_t*' field")
+
+            search_results_json = { 'recovered_snr': recovered_snr,
+                                    'recovered_dm': recovered_dm,
+                                    'recovered_tcentral': recovered_tc }
+
+            json_output['search_results'].append(search_results_json)
+            
+        return json_output
 
 
 ####################################################################################################
@@ -191,16 +225,6 @@ class search_params:
         setattr(self, field_name, field_value)
 
 
-    def make_stream(self, no_noise_flag=False, nt_chunk=None):
-        return rerunnable_gaussian_noise_stream(nfreq = self.nfreq, 
-                                                nt_tot = self.nsamples, 
-                                                freq_lo_MHz = self.freq_lo_MHz, 
-                                                freq_hi_MHz = self.freq_hi_MHz, 
-                                                dt_sample = self.dt_sec,
-                                                no_noise_flag = no_noise_flag,
-                                                nt_chunk = nt_chunk)
-
-
 ####################################################################################################
 
 
@@ -217,7 +241,7 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
     If 'no_noise_flag' is True, then the stream will output zeroes instead of Gaussian random numbers.
     """
 
-    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, no_noise_flag=False, state=None, nt_chunk=None):
+    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, simulate_noise=True, state=None, nt_chunk=None):
         if nt_tot <= 0:
             raise RuntimeError('rerunnable_gaussian_noise_stream constructor: nt_tot must be > 0')
         if nt_chunk is None:
@@ -225,7 +249,7 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
 
         rf_pipelines.py_wi_stream.__init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, dt_sample, nt_chunk)
 
-        self.no_noise_flag = no_noise_flag
+        self.simulate_noise = simulate_noise
         self.nt_tot = nt_tot
         self.nt_chunk = nt_chunk
         self.set_state(state)
@@ -237,7 +261,7 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         it = 0
         while it < self.nt_tot:
             nt = min(self.nt_tot-it, self.nt_chunk)
-            intensity = np.zeros((self.nfreq,nt), dtype=np.float) if self.no_noise_flag else self.state.standard_normal((self.nfreq,nt))
+            intensity = self.state.standard_normal((self.nfreq,nt)) if self.simulate_noise else np.zeros((self.nfreq,nt), dtype=np.float)
             weights = np.ones((self.nfreq, nt), dtype=np.float)
             run_state.write(intensity, weights)
             it += self.nt_chunk
