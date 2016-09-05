@@ -1,6 +1,8 @@
+import os
 import sys
 import copy
 import json
+import itertools
 import numpy as np
 
 import rf_pipelines
@@ -22,7 +24,7 @@ class olympics:
             # if 'sparams' is a string, then assume it's the filename
             self.sparams = search_params(sparams)
         else:
-            raise RuntimeError('xx')
+            raise RuntimeError("frb_olympics.olympics constructor: expected 'sparams' argument to be either a string or an object of class frb_olympics.search_params")
 
         self.stream = rerunnable_gaussian_noise_stream(nfreq = self.sparams.nfreq, 
                                                        nt_tot = self.sparams.nsamples, 
@@ -44,12 +46,55 @@ class olympics:
 
         self.dedisperser_list.append((name, transform))
 
- 
+
+    def run(self, out_filename, nmc, clobber=False):
+        if not out_filename.endswith('.json'):
+            raise RuntimeError("frb_olympics.olympics.run(): 'out_filename' argument must end in .json")
+        
+        if len(self.dedisperser_list) == 0:
+            raise RuntimeError('frb_olympics.olympics.run(): no dedispersers were defined')
+
+        if nmc <= 0:
+            raise RuntimeError('frb_olympics.olympics.run(): expected nmc > 0')
+        
+        if not clobber and os.path.exists(out_filename) and (os.stat(out_filename).st_size > 0):
+            for i in itertools.count():
+                filename2 = '%s.old%d.json' % (out_filename[:-5], i)
+                if not os.path.exists(filename2):
+                    print >>sys.stderr, 'renaming existing file %s -> %s' % (out_filename, filename2)
+                    os.rename(out_filename, filename2)
+                    break
+
+        print >>sys.stderr, 'truncating file', out_filename
+        f_out = open(out_filename, 'w')
+
+        json_out = { 'simulate_noise': self.simulate_noise,
+                     'snr': self.snr,
+                     'nmc': nmc,
+                     'dedisperser_names': [ ],
+                     'search_params': { },
+                     'search_results': [ ] }
+
+        for (field_name, field_type) in self.sparams.all_fields:
+            json_out["search_params"][field_name] = getattr(self.sparams, field_name)
+
+        for (dedisperser_name, transform) in self.dedisperser_list:
+            json_out["dedisperser_names"].append(dedisperser_name)
+
+        for imc in xrange(nmc):
+            json_sim = self.run_one()
+            json_out["search_results"].append(json_sim)
+
+        json.dump(json_out, f_out, indent=4)
+        print >>f_out   # extra newline (cosmetic)
+        print >>sys.stderr, 'wrote', out_filename
+
+
     def run_one(self):
         """Returns json object (not string representation).  Uses current state of stream"""
-
+        
         if len(self.dedisperser_list) == 0:
-            raise RuntimeError(xx)
+            raise RuntimeError('frb_olympics.olympics.run_one(): no dedispersers were defined')
 
         # Generate random FRB params
         true_dm = np.random.uniform(self.sparams.dm_min, self.sparams.dm_max)
