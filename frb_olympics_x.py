@@ -13,6 +13,71 @@ def dispersion_delay(dm, freq_MHz):
     return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
 
+####################################################################################################
+#
+# MPI configuration
+
+
+is_mpi = True
+
+try:
+    import mpi4py
+except ImportError:
+    is_mpi = False
+
+
+if is_mpi:
+    import mpi4py.MPI
+    mpi_rank = mpi4py.MPI.COMM_WORLD.rank
+    mpi_size = mpi4py.MPI.COMM_WORLD.size
+    mpi_bcast = mpi4py.MPI.COMM_WORLD.bcast
+    mpi_gather = lambda x: mpi4py.MPI.COMM_WORLD.gather(x, root=0)
+    mpi_barrier = mpi4py.MPI.COMM_WORLD.Barrier
+    mpi_rank_within_node = 0    # determined below
+    mpi_tasks_per_node = 0      # determined below
+
+    import socket
+    my_hostname = socket.gethostname()
+    all_hostnames = mpi4py.MPI.COMM_WORLD.allgather(my_hostname)
+    mult = { }
+
+    for (i,h) in enumerate(all_hostnames):
+        mult[h] = mult.get(h,0) + 1
+        if h == my_hostname:
+            mpi_tasks_per_node += 1
+            if i < mpi_rank:
+                mpi_rank_within_node += 1
+
+    # check
+    for (k,v) in mult.iteritems():
+        if v != mpi_tasks_per_node:
+            raise RuntimeError('expected all hostnames to have equal numbers of MPI tasks')
+        
+else:
+    # Hmm, mpi4py failed to load... is this because we're a serial job, or for some other reason?
+    suspicious_vars = [ 'OMPI_COMM_WORLD_SIZE',   # openmpi-1.3
+                        'SLURM_NPROCS',           # slurm v14
+                        'PMI_SIZE' ]              # mpich 2
+
+    for x in suspicious_vars:
+        if os.environ.has_key(x):
+            print >>sys.stderr, 'Environment variable %s is set, but mpi4py failed to import.'
+            print >>sys.stderr, 'This probably means that something is wrong with the mpi4py installation.'
+            sys.exit(1)
+
+    # OK, satisfied that we're a serial job!
+    mpi_rank = 0
+    mpi_size = 1
+    mpi_bcast = lambda x: x
+    mpi_gather = lambda x: [x]
+    mpi_rank_within_node = 0
+    mpi_tasks_per_node = 1
+    mpi_barrier = lambda: None
+
+
+####################################################################################################
+
+
 class olympics:
     def __init__(self, sparams, snr=30.0, simulate_noise=True):
         self.simulate_noise = simulate_noise
