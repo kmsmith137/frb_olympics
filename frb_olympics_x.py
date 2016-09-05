@@ -47,9 +47,9 @@ class olympics:
         self.dedisperser_list.append((name, transform))
 
 
-    def run(self, out_filename, nmc, clobber=False):
-        if not out_filename.endswith('.json'):
-            raise RuntimeError("frb_olympics.olympics.run(): 'out_filename' argument must end in .json")
+    def run(self, json_filename, nmc, clobber=False):
+        if not json_filename.endswith('.json'):
+            raise RuntimeError("frb_olympics.olympics.run(): 'json_filename' argument must end in .json")
         
         if len(self.dedisperser_list) == 0:
             raise RuntimeError('frb_olympics.olympics.run(): no dedispersers were defined')
@@ -57,23 +57,23 @@ class olympics:
         if nmc <= 0:
             raise RuntimeError('frb_olympics.olympics.run(): expected nmc > 0')
         
-        if not clobber and os.path.exists(out_filename) and (os.stat(out_filename).st_size > 0):
+        if not clobber and os.path.exists(json_filename) and (os.stat(json_filename).st_size > 0):
             for i in itertools.count():
-                filename2 = '%s.old%d.json' % (out_filename[:-5], i)
+                filename2 = '%s.old%d.json' % (json_filename[:-5], i)
                 if not os.path.exists(filename2):
-                    print >>sys.stderr, 'renaming existing file %s -> %s' % (out_filename, filename2)
-                    os.rename(out_filename, filename2)
+                    print >>sys.stderr, 'renaming existing file %s -> %s' % (json_filename, filename2)
+                    os.rename(json_filename, filename2)
                     break
 
-        print >>sys.stderr, 'truncating file', out_filename
-        f_out = open(out_filename, 'w')
+        print >>sys.stderr, 'truncating file', json_filename
+        f_out = open(json_filename, 'w')
 
         json_out = { 'simulate_noise': self.simulate_noise,
                      'snr': self.snr,
                      'nmc': nmc,
                      'dedisperser_names': [ ],
                      'search_params': { },
-                     'search_results': [ ] }
+                     'sims': [ ] }
 
         for (field_name, field_type) in self.sparams.all_fields:
             json_out["search_params"][field_name] = getattr(self.sparams, field_name)
@@ -83,11 +83,14 @@ class olympics:
 
         for imc in xrange(nmc):
             json_sim = self.run_one()
-            json_out["search_results"].append(json_sim)
+            json_out["sims"].append(json_sim)
 
         json.dump(json_out, f_out, indent=4)
         print >>f_out   # extra newline (cosmetic)
-        print >>sys.stderr, 'wrote', out_filename
+        print >>sys.stderr, 'wrote', json_filename
+
+        # make_snr_plots() is defined later in this file
+        make_snr_plots(json_filename, json_out)
 
 
     def run_one(self):
@@ -173,6 +176,94 @@ class olympics:
             json_output['search_results'].append(search_results_json)
             
         return json_output
+
+
+####################################################################################################
+
+
+def make_snr_plot(plot_filename, xvec, snr_arr, xmin, xmax, xlabel, dedisperser_names):
+    import matplotlib.pyplot as plt
+
+    color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c' ]
+
+    xvec = np.array(xvec)
+    nds = len(dedisperser_names)
+    nmc = len(xvec)
+
+    assert xvec.ndim == 1
+    assert nds <= len(color_list)
+    assert snr_arr.shape == (nmc, nds)
+    assert np.all(snr_arr >= 0.0)
+
+    slist = [ ]
+    for ids in xrange(nds):
+        slist.append(plt.scatter(xvec, snr_arr[:,ids], s=5, color=color_list[ids], marker='o'))
+
+    plt.xlim(xmin, xmax)
+    plt.ylim(0.0, max(np.max(snr_arr),1.1))
+    plt.axhline(y=1, ls=':', color='k')
+    plt.xlabel(xlabel)
+    plt.ylabel('Recovered SNR')
+    plt.legend(slist, dedisperser_names, scatterpoints=1, loc='lower left')
+
+    print >>sys.stderr, 'writing', plot_filename
+    plt.savefig(plot_filename)
+    plt.clf()
+    
+
+def make_snr_plots(json_filename, json_obj=None):
+    if not json_filename.endswith('.json'):
+        raise RuntimeError("frb_olympics.make_snr_plots(): 'json_filename' argument must end in .json")
+
+    if json_obj is None:
+        print >>sys.stderr, 'reading', json_filename
+        json_obj = json.load(open(json_filename))
+
+    dedisperser_names = json_obj["dedisperser_names"];
+    nmc = json_obj["nmc"]
+    nds = len(dedisperser_names)
+
+    snr_arr = np.zeros((nmc,nds))
+    for imc in xrange(nmc):
+        true_snr = json_obj['sims'][imc]['true_snr']
+        for ids in xrange(nds):
+            recovered_snr = json_obj['sims'][imc]['search_results'][ids]['recovered_snr']
+            snr_arr[imc,ids] = recovered_snr / true_snr
+
+    make_snr_plot(plot_filename = ('%s_snr_vs_dm.pdf' % json_filename[:-5]),
+                  xvec = [ s['true_dm'] for s in json_obj['sims'] ],
+                  snr_arr = snr_arr,
+                  xmin = json_obj['search_params']['dm_min'],
+                  xmax = json_obj['search_params']['dm_max'],
+                  xlabel = 'DM',
+                  dedisperser_names = dedisperser_names)
+
+    if json_obj['search_params']['sm_min'] < json_obj['search_params']['sm_max']:
+        make_snr_plot(plot_filename = ('%s_snr_vs_sm.pdf' % json_filename[:-5]),
+                      xvec = [ s['true_sm'] for s in json_obj['sims'] ],
+                      snr_arr = snr_arr,
+                      xmin = json_obj['search_params']['sm_min'],
+                      xmax = json_obj['search_params']['sm_max'],
+                      xlabel = 'SM',
+                      dedisperser_names = dedisperser_names)
+
+    if json_obj['search_params']['beta_min'] < json_obj['search_params']['beta_max']:
+        make_snr_plot(plot_filename = ('%s_snr_vs_beta.pdf' % json_filename[:-5]),
+                      xvec = [ s['true_beta'] for s in json_obj['sims'] ],
+                      snr_arr = snr_arr,
+                      xmin = json_obj['search_params']['beta_min'],
+                      xmax = json_obj['search_params']['beta_max'],
+                      xlabel = 'spectral index',
+                      dedisperser_names = dedisperser_names)
+
+    if json_obj['search_params']['width_sec_min'] < json_obj['search_params']['width_sec_max']:
+        make_snr_plot(plot_filename = ('%s_snr_vs_width.pdf' % json_filename[:-5]),
+                      xvec = [ s['true_width'] for s in json_obj['sims'] ],
+                      snr_arr = snr_arr,
+                      xmin = json_obj['search_params']['width_sec_min'],
+                      xmax = json_obj['search_params']['width_sec_max'],
+                      xlabel = 'intrinsic width [sec]',
+                      dedisperser_names = dedisperser_names)
 
 
 ####################################################################################################
