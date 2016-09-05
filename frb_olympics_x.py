@@ -65,7 +65,8 @@ class olympics:
                     os.rename(json_filename, filename2)
                     break
 
-        print >>sys.stderr, 'truncating file', json_filename
+        verb = 'truncating' if os.path.exists(json_filename) else 'creating'
+        print >>sys.stderr, verb, 'file', json_filename
         f_out = open(json_filename, 'w')
 
         json_out = { 'simulate_noise': self.simulate_noise,
@@ -82,6 +83,7 @@ class olympics:
             json_out["dedisperser_names"].append(dedisperser_name)
 
         for imc in xrange(nmc):
+            print >>sys.stderr, 'frb_olympics: starting Monte Carlo %d/%d' % (imc, nmc)
             json_sim = self.run_one()
             json_out["sims"].append(json_sim)
 
@@ -168,6 +170,8 @@ class olympics:
                 recovered_tc = pipeline_json['frb_global_max_trigger_tundisp'] - (recovered_dt_initial + recovered_dt_final) / 2.0
             else:
                 raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_t*' field")
+
+            print >>sys.stderr, 'frb_olympics: dedisperser=%s, recovered snr=%s' % (name, recovered_snr)
 
             search_results_json = { 'recovered_snr': recovered_snr,
                                     'recovered_dm': recovered_dm,
