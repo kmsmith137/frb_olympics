@@ -186,14 +186,14 @@ class search_params:
         setattr(self, field_name, field_value)
 
 
-    def make_noise_stream(self, nt_chunk=None):
-        return rerunnable_gaussian_noise_stream(nfreq = self.nfreq,
+    def make_stream(self, no_noise_flag=False, nt_chunk=None):
+        return rerunnable_gaussian_noise_stream(nfreq = self.nfreq, 
                                                 nt_tot = self.nsamples, 
                                                 freq_lo_MHz = self.freq_lo_MHz, 
                                                 freq_hi_MHz = self.freq_hi_MHz, 
                                                 dt_sample = self.dt_sec,
+                                                no_noise_flag = no_noise_flag,
                                                 nt_chunk = nt_chunk)
-
 
 
 ####################################################################################################
@@ -208,16 +208,19 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
            # ... run stream ...
         s.set_state(saved_state)
            # ... rerunning stream will give same output ...
+
+    If 'no_noise_flag' is True, then the stream will output zeroes instead of Gaussian random numbers.
     """
 
-    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, state=None, nt_chunk=None):
-        if nt_chunk is None:
-            nt_chunk = min(0124, nt_tot)
+    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, no_noise_flag=False, state=None, nt_chunk=None):
         if nt_tot <= 0:
             raise RuntimeError('rerunnable_gaussian_noise_stream constructor: nt_tot must be > 0')
+        if nt_chunk is None:
+            nt_chunk = min(1024, nt_tot)
 
         rf_pipelines.py_wi_stream.__init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, dt_sample, nt_chunk)
-        
+
+        self.no_noise_flag = no_noise_flag
         self.nt_tot = nt_tot
         self.nt_chunk = nt_chunk
         self.set_state(state)
@@ -229,7 +232,7 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         it = 0
         while it < self.nt_tot:
             nt = min(self.nt_tot-it, self.nt_chunk)
-            intensity = self.state.standard_normal((self.nfreq, nt))
+            intensity = np.zeros((self.nfreq,nt), dtype=np.float) if self.no_noise_flag else self.state.standard_normal((self.nfreq,nt))
             weights = np.ones((self.nfreq, nt), dtype=np.float)
             run_state.write(intensity, weights)
             it += self.nt_chunk
