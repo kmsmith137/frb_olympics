@@ -60,8 +60,13 @@ def run_monte_carlo(sp, stream, dedisperser_list, snr=30.):
     for dedisperser in dedisperser_list:
         stream.set_state(saved_state)
 
-        pipeline_json = stream.run([t_frb, dedisperser], return_json=True)
-        pipeline_json = json.loads(pipeline_json)   # Temporary kludge (I think)
+        pipeline_json = stream.run([t_frb, dedisperser], outdir=None, return_json=True)
+
+        # A kludge: eventually, the run() return value will be a json object, but for now it returns
+        # the string representation, which can be converted to a json object by calling json.loads().
+        pipeline_json = json.loads(pipeline_json)
+        
+        # We're only interested in the part of the json output from the last transform (the dedisperser).
         pipeline_json = pipeline_json[0]['transforms'][-1]
 
         if not pipeline_json.has_key('frb_global_max_trigger'):
@@ -88,7 +93,7 @@ def run_monte_carlo(sp, stream, dedisperser_list, snr=30.):
 
         search_results_json = { 'recovered_snr': recovered_snr,
                                 'recovered_dm': recovered_dm,
-                                'recovered_tcentral' : recovered_tc }
+                                'recovered_tcentral': recovered_tc }
 
         json_output['search_results'].append(search_results_json)
 
