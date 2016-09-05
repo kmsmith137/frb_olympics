@@ -44,10 +44,6 @@ class olympics:
 
         self.dedisperser_list.append((name, transform))
 
-
-    def run(self, outstem, nmc):
-        pass
-
  
     def run_one(self):
         """Returns json object (not string representation).  Uses current state of stream"""
@@ -137,25 +133,62 @@ class olympics:
 ####################################################################################################
 
 
-class search_params:
-    def __init__(self, filename):
-        self.filename = filename
 
-        # Note: extract_field() calls setattr() to set the attribute by the same name
-        kv_pairs = self.parse_file(filename)
-        self.extract_field('dm_min', float, kv_pairs)
-        self.extract_field('dm_max', float, kv_pairs)
-        self.extract_field('sm_min', float, kv_pairs)
-        self.extract_field('sm_max', float, kv_pairs)
-        self.extract_field('beta_min', float, kv_pairs)
-        self.extract_field('beta_max', float, kv_pairs)
-        self.extract_field('width_sec_min', float, kv_pairs)
-        self.extract_field('width_sec_max', float, kv_pairs)
-        self.extract_field('nfreq', int, kv_pairs)
-        self.extract_field('freq_lo_MHz', float, kv_pairs)
-        self.extract_field('freq_hi_MHz', float, kv_pairs)
-        self.extract_field('dt_sec', float, kv_pairs)
-        self.extract_field('nsamples', int, kv_pairs)
+def parse_kv_file(filename):
+    """Reads key/value pairs from file, and returns a string->string dictionary."""
+    
+    ret = { }
+
+    for line in open(filename):
+        if (len(line) > 0) and (line[-1] == '\n'):
+            line = line[:-1]
+            
+        i = line.find('#')
+        if i >= 0:
+            line = line[:i]
+
+        t = line.split()
+        if len(t) == 0:
+            continue
+        if (len(t) != 3) or (t[1] != '='):
+            raise RuntimeError("%s: parse error in line '%s'" % (filename,line))
+        if ret.has_key(t[0]):
+            raise RuntimeError("%s: duplicate key '%s'" % (filename,t[0]))
+        ret[t[0]] = t[2]
+
+    return ret
+
+
+class search_params:
+    # a list of (field_name, field_type) pairs
+    all_fields = [ ('dm_min', float),
+                   ('dm_max', float),
+                   ('sm_min', float),
+                   ('sm_max', float),
+                   ('beta_min', float),
+                   ('beta_max', float),
+                   ('width_sec_min', float),
+                   ('width_sec_max', float),
+                   ('nfreq', int),
+                   ('freq_lo_MHz', float),
+                   ('freq_hi_MHz', float),
+                   ('dt_sec', float),
+                   ('nsamples', int) ]
+
+
+    def __init__(self, filename):
+        kv_pairs = parse_kv_file(filename)
+
+        for (field_name, field_type) in self.all_fields:
+            try:
+                field_value = kv_pairs.pop(field_name)
+                field_value = field_type(field_value)
+            except KeyError:
+                raise RuntimeError("%s: field '%s' not found" % (filename, field_name))
+            except ValueError:
+                raise RuntimeError("%s: parse error in field '%s' (value='%s')" % (filename, field_name, field_value))
+
+            setattr(self, field_name, field_value)
 
         if len(kv_pairs) > 0:
             raise RuntimeError("%s: unrecognized parameter(s) in file: %s" % (filename, ', '.join(kv_pairs.keys())))
@@ -186,43 +219,6 @@ class search_params:
         assert timestream_length > 1.2 * max_dispersion_delay, \
             filename + ': failed assert: timestream_length > 1.2 * max_dispersion_delay'
 
-
-    @staticmethod
-    def parse_file(filename):
-        """Reads key/value pairs from file, and returns a string->string dictionary."""
-
-        ret = { }
-
-        for line in open(filename):
-            if (len(line) > 0) and (line[-1] == '\n'):
-                line = line[:-1]
-
-            i = line.find('#')
-            if i >= 0:
-                line = line[:i]
-
-            t = line.split()
-            if len(t) == 0:
-                continue
-            if (len(t) != 3) or (t[1] != '='):
-                raise RuntimeError("%s: parse error in line '%s'" % (filename,line))
-            if ret.has_key(t[0]):
-                raise RuntimeError("%s: duplicate key '%s'" % (filename,t[0]))
-            ret[t[0]] = t[2]
-
-        return ret
-
-    
-    def extract_field(self, field_name, field_type, kv_pairs):
-        if not kv_pairs.has_key(field_name):
-            raise RuntimeError("%s: field '%s' not found" % (self.filename, field_name))
-
-        try:
-            field_value = field_type(kv_pairs.pop(field_name))
-        except:
-            raise RuntimeError("%s: parse error in field '%s' (value='%s')" % (self.filename, field_name, kv_pairs[field_name]))
-
-        setattr(self, field_name, field_value)
 
 
 ####################################################################################################
