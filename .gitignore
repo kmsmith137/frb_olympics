@@ -1,9 +1,6 @@
 *~
-*.o
 *.pyc
-run-unit-tests
-libfrb_olympics.so
-frb_olympics_c.cpp
-frb_olympics_c.so
-TODO
 Makefile.local
+examples/example0_bonsai/example0_bonsai_config.hdf5
+examples/example0_bonsai/example0.json
+examples/example0_bonsai/example0_snr_vs_dm.pdf

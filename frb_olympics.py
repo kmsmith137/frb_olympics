@@ -1,150 +1,20 @@
-"""
-Here are some notes on the frb_olympics internals (see also the README file)
-
-One important data structure is frb_search_params, which is shared
-between C++ and Python, and defines various parameters of the search.
-
-The frb_search_params constructor syntax is
-   p = frb_search_params('example_search_params.txt')    # construct from file
-   p = frb_search_params(p2)           # make copy from existing search_params
-
-An frb_search_params contains the following members
-
-   # These fields define the parameter space to be simulated or searched
-   p.dm_min, p.dm_max         # dispersion measure (DM) range
-   p.sm_min, p.sm_max         # scattering measure (SM) range, not really used yet
-   p.beta_min, p.beta_max     # spectral index range, not really used yet
-   p.width_min, p.width_max   # intrinsic width range
-
-   # These fields define the frequency channels of the instrument, and its time
-   # resolution.  Channels are assumed equally spaced in frequency nu.
-   p.nchan               # number of frequency channels
-   p.band_lo_freq_MHz    # e.g. 400.0 for full CHIME
-   p.band_hi_freq_MHz    # e.g. 800.0 for full CHIME
-   p.dt_sample           # e.g. 1.0e-3 for full CHIME (all times are in seconds)
-
-   # These fields define the length of the timestream to be searched.
-   # For a non-incremental search, we have nsamples_tot == nsamples_per_chunk and nchunks == 1.
-   # For an incremental search, we have nsamples_tot == nsamples_per_chunk * nchunks.
-   p.nsamples_tot
-   p.nsamples_per_chunk
-   p.nchunks
-
-For the full declaration of frb_search_params, see frb_olympics.hpp (C++) or 
-frb_olympics_c.pyx (Python).  The python declaration is sort of hard to read 
-due to all the cython boilerplate!
-
-I usually initialize the frb_search_params by writing a .txt file (best illustrated 
-by example; see example_search_params.txt) and then doing:
-   p = frb_olympics.frb_search_params('example_search_params.txt')
-
-
-The frb_olympics uses a plugin architecture in which new search algorithms can
-be included as long as they implement an appropriate API.  For search algorithms
-written in Python, the API is as follows.  Each search algorithm should be a class
-which implements the following methods:
-
-  __init__(self, ...):
-      should initialize self.name, in addition to any fields needed internally
-
-  search_init(self, search_params):
-      Here, 'search_params' is an object of class frb_search_params, see above.
-      This method is called as soon as the search params are determined.  It will
-      only be called once, even if multiple timestreams are searched.
-
-      It should initialize the following fields, in addition to any fields
-      needed internally:
-
-         # Memory used while searching, in GB
-         self.search_gb
-
-         # Normally, the search algorithm will just compute the trigger statistic (a scalar)
-         # without actually returning the output of its DM transform (a 2D array indexed by 
-         # DM and arrival time).  
-         #
-         # However, for debugging purposes we sometimes want to inspect the output of the transform.
-         # The algorithm should set (self.debug_buffer_ndm, self.debug_buffer_nt) to the shape
-         # of the transform output array.
-         #
-         self.debug_buffer_ndm
-         self.debug_buffer_nt
-
-   search_start(self, mpi_rank_within_node):
-       Called once per searched timestream (unlike search_init(), which is only called once, period).
-       Does per-timestream initializations, such as allocating buffers.
-       The 'mpi_rank_within_node' argument is sometimes useful for pinning threads to cores.
-
-   search_chunk(self, chunk, ichunk, debug_buffer=None):
-       This is the main routine which does the actual search.  Its job is to set
-       self.search_result to the "trigger" statistic T from the FRB olympics memo.  
-
-       In a non-incremental search, search_chunk() will be called once with ichunk=0.
-
-       In an incremental search, search_chunk() will be called multiple times (with 
-       ichunk=0,..,nchunks-1) and search_chunk() is responsible for saving state between
-       calls and setting self.search_result at the end.
-
-       Normally, search_chunk() just computes the trigger statistic (a scalar) without
-       actually returning the output of the DM transform (a 2D array indexed by DM and
-       arrival time).  However, if debug_buffer is not None, it will be an array of shape
-       (self.debug_buffer_ndm, self.debug_buffer_nt) which holds the output of the DM
-       transform.  I usually use this for visual inspection with frb-dump.py, but it
-       could be used for other things.  
-
-       "Masked" entries in the debug_buffer which are not actually searched
-       (because their DM or arrival time is out of range) are indicated by setting
-       them to -1.0e30.
-
-  search_end(self):
-       This is called once per searched timestream, after the calls to search_chunk().
-       Usually it just deallocates buffers, which is important so that we don't use
-       too much memory when multiple searches a run in parallel with frb-compare.py.
-       
-
-Summarizing, the structure of frb-compare.py is approximately this:
-
-   for each search algorithm a:
-      call a.__init__()
-      call a.search_init(search_params)
-
-   for each timestream:
-      for each algorithm a:
-         call a.search_start()
-         for each chunk in an incremental search:
-             call a.search_chunk()
-         call a.search_end()
-
-For a well-commented example of implementing the search algorithm API in Python,
-see frb_fdmt.py (just a wrapper around Alex Josephy's cpuFDMT.py, but shows how 
-to implement the API).
-
-See the README file for some frb-compare.py example runs.  Another useful utility
-for visual sanity checking is frb-dump.py, see the bottom of the README file.
-"""
-
 import os
 import sys
+import copy
+import json
+import itertools
 import numpy as np
 
-# cython imports, including the search algorithms 
-#   { simple_direct, sloth, bonsai }
-from frb_olympics_c import frb_rng, frb_pulse, frb_search_params, \
-    simple_direct, sloth, bonsai, sloth_sm_subsearch
+import matplotlib; matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
-# Alex Josephy FDMT code
-from frb_fdmt import fdmt
+import rf_pipelines
 
-# the downsample search "algorithm", which just wraps
-# another search algorithm and runs it at lower time sampling
-from frb_downsample import downsample
 
-# the rechunk search "algorithm" wraps another search algorithm and runs it
-# with a different chunk size (useful for debugging incremental search)
-from frb_rechunk import rechunk
+# Note: cut-and-paste from "simpulse"
+def dispersion_delay(dm, freq_MHz):
+    return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
-# another wrapper algorithm; this one combines multiple algorithms
-# (e.g. trees with different dm_max and downsampling) and returns the max trigger
-from frb_combiner import combiner
 
 ####################################################################################################
 #
@@ -212,241 +82,431 @@ def init_mpi_log_files(stem):
     if mpi_size == 1:
         return
 
-    # redirect stdout to log file which is unique to this MPI rank
-    log_filename = '%s_log%d' % (stem, mpi_rank)
-    print 'redirecting stdout -> %s' % log_filename
+    # redirect stdout, stderr to log files which are unique to this MPI rank
 
+    log_filename = '%s.stdout%d' % (stem, mpi_rank)
+    sys.stderr.write('redirecting stdout -> %s\n' % log_filename)
     f_log = open(log_filename, 'w')
     os.dup2(f_log.fileno(), sys.stdout.fileno())
 
+    log_filename = '%s.stderr%d' % (stem, mpi_rank)
+    sys.stderr.write('redirecting stderr -> %s\n' % log_filename)
+    f_log = open(log_filename, 'w')
+    os.dup2(f_log.fileno(), sys.stderr.fileno())
 
-def imp(filename):
-    """
-    A utility routine which imports module with given filename, returning the module object.
 
-    In the MPI case, this must be called MPI-collectively, and is written to
-    avoid a race condition where one core is writing the .pyc file while another
-    core concurrently reads the incomplete .pyc file.
-    """
+####################################################################################################
 
-    import imp
 
-    if mpi_rank > 0:
-        e = mpi_bcast(None)
-        if e is not None:
-            raise e
+class olympics:
+    def __init__(self, sparams, snr=30.0, simulate_noise=True):
+        self.simulate_noise = simulate_noise
+        self.snr = snr
 
-    try:
-        module_name = os.path.basename(filename)
-        module_name = module_name[:module_name.find('.')]
-        ret = imp.load_source(module_name, filename)
-    except Exception as e:
+        if isinstance(sparams, search_params):
+            self.sparams = sparams
+        elif isinstance(sparams, basestring):
+            # if 'sparams' is a string, then assume it's the filename
+            self.sparams = search_params(sparams)
+        else:
+            raise RuntimeError("frb_olympics.olympics constructor: expected 'sparams' argument to be either a string or an object of class frb_olympics.search_params")
+
+        self.stream = rerunnable_gaussian_noise_stream(nfreq = self.sparams.nfreq, 
+                                                       nt_tot = self.sparams.nsamples, 
+                                                       freq_lo_MHz = self.sparams.freq_lo_MHz, 
+                                                       freq_hi_MHz = self.sparams.freq_hi_MHz, 
+                                                       dt_sample = self.sparams.dt_sec,
+                                                       simulate_noise = simulate_noise)
+
+
+        # The dedisperser_list is a list of (name, transform) pairs
+        self.dedisperser_list = [ ]
+
+
+    def add_bonsai(self, config_hdf5_filename, name=None):
+        transform = rf_pipelines.bonsai_dedisperser(config_hdf5_filename)
+
+        if name is None:
+            name = transform.name
+
+        self.dedisperser_list.append((name, transform))
+
+
+    def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
+        if not json_filename.endswith('.json'):
+            raise RuntimeError("frb_olympics.olympics.run(): 'json_filename' argument must end in .json")
+        
+        if len(self.dedisperser_list) == 0:
+            raise RuntimeError('frb_olympics.olympics.run(): no dedispersers were defined')
+
+        if nmc <= 0:
+            raise RuntimeError('frb_olympics.olympics.run(): expected nmc > 0')
+        
+        if (mpi_size > 1) and mpi_log_files:
+            init_mpi_log_files(stem = json_filename[:-5])
+
         if mpi_rank == 0:
-            mpi_bcast(e)
-        raise
+            json_out = { 'simulate_noise': self.simulate_noise,
+                         'snr': self.snr,
+                         'nmc': nmc,
+                         'dedisperser_names': [ ],
+                         'search_params': { },
+                         'sims': [ ] }
+        
+            for (field_name, field_type) in self.sparams.all_fields:
+                json_out["search_params"][field_name] = getattr(self.sparams, field_name)
+            
+            for (dedisperser_name, transform) in self.dedisperser_list:
+                json_out["dedisperser_names"].append(dedisperser_name)
 
-    if mpi_rank == 0:
-        mpi_bcast(None)
+            if not clobber and os.path.exists(json_filename) and (os.stat(json_filename).st_size > 0):
+                for i in itertools.count():
+                    filename2 = '%s.old%d.json' % (json_filename[:-5], i)
+                    if not os.path.exists(filename2):
+                        print >>sys.stderr, 'renaming existing file %s -> %s' % (json_filename, filename2)
+                        os.rename(json_filename, filename2)
+                        break
+
+            verb = 'truncating' if os.path.exists(json_filename) else 'creating'
+            print >>sys.stderr, verb, 'file', json_filename
+            f_out = open(json_filename, 'w')
+
+        json_sims = [ ]
+
+        for imc in xrange(mpi_rank, nmc, mpi_size):
+            print >>sys.stderr, 'frb_olympics: starting Monte Carlo %d/%d' % (imc, nmc)
+            json_sim = self.run_one()
+            json_sims.append(json_sim)
+
+        json_sims = mpi_gather(json_sims)
+
+        if mpi_rank == 0:
+            for s in json_sims:
+                json_out['sims'] += s
+
+            json.dump(json_out, f_out, indent=4)
+            print >>f_out   # extra newline (cosmetic)
+            print >>sys.stderr, 'wrote', json_filename
+
+            # make_snr_plots() is defined later in this file
+            make_snr_plots(json_filename, json_out)
+
+
+    def run_one(self):
+        """Returns json object (not string representation).  Uses current state of stream"""
+        
+        if len(self.dedisperser_list) == 0:
+            raise RuntimeError('frb_olympics.olympics.run_one(): no dedispersers were defined')
+
+        # Generate random FRB params
+        true_dm = np.random.uniform(self.sparams.dm_min, self.sparams.dm_max)
+        true_sm = np.random.uniform(self.sparams.sm_min, self.sparams.sm_max)
+        true_beta = np.random.uniform(self.sparams.beta_min, self.sparams.beta_max)
+        true_width = np.random.uniform(self.sparams.width_sec_min, self.sparams.width_sec_max)
+    
+        # Dispersion delays at DM of FRB
+        true_dt_initial = dispersion_delay(true_dm, self.sparams.freq_hi_MHz)
+        true_dt_final = dispersion_delay(true_dm, self.sparams.freq_lo_MHz)
+
+        timestream_length = self.sparams.nsamples * self.sparams.dt_sec
+        tu_min = 0.05*timestream_length - true_dt_initial
+        tu_max = 0.95*timestream_length - true_dt_final
+        
+        assert tu_min < tu_max
+        true_tu = np.random.uniform(tu_min, tu_max);
+        true_tc = true_tu + (true_dt_initial + true_dt_final) / 2.
+        
+        t_frb = rf_pipelines.frb_injector_transform(snr = self.snr,
+                                                    undispersed_arrival_time = true_tu,
+                                                    dm = true_dm,
+                                                    intrinsic_width = true_width,
+                                                    sm = true_sm,
+                                                    spectral_index = true_beta)
+
+        # Start building up output
+        json_output = { 'true_snr': self.snr,
+                        'true_dm': true_dm,
+                        'true_sm': true_sm,
+                        'true_beta': true_beta,
+                        'true_width': true_width,
+                        'true_tcentral': true_tc,
+                        'search_results': [ ] }
+        
+        saved_state = self.stream.get_state()
+
+        for (name, dedisperser) in self.dedisperser_list:
+            self.stream.set_state(saved_state)
+            
+            pipeline_json = self.stream.run([t_frb, dedisperser], outdir=None, return_json=True)
+            
+            # A kludge: eventually, the run() return value will be a json object, but for now it returns
+            # the string representation, which can be converted to a json object by calling json.loads().
+            pipeline_json = json.loads(pipeline_json)
+            
+            # We're only interested in the part of the json output from the last transform (the dedisperser).
+            pipeline_json = pipeline_json[0]['transforms'][-1]
+            
+            if not pipeline_json.has_key('frb_global_max_trigger'):
+                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger' field")
+            if not pipeline_json.has_key('frb_global_max_trigger_dm'):
+                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_dm' field")
+        
+            recovered_snr = pipeline_json['frb_global_max_trigger']
+            recovered_dm = pipeline_json['frb_global_max_trigger_dm']
+            
+            recovered_dt_initial = dispersion_delay(recovered_dm, self.sparams.freq_hi_MHz)
+            recovered_dt_final = dispersion_delay(recovered_dm, self.sparams.freq_lo_MHz)
+
+            if pipeline_json.has_key('frb_global_max_trigger_tcentral'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tcentral']
+            elif pipeline_json.has_key('frb_global_max_trigger_tinitial'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tinitial'] + (recovered_dt_final - recovered_dt_initial) / 2.0
+            elif pipeline_json.has_key('frb_global_max_trigger_tfinal'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tfinal'] - (recovered_dt_final - recovered_dt_initial) / 2.0
+            elif pipeline_json.has_key('frb_global_max_trigger_final'):
+                recovered_tc = pipeline_json['frb_global_max_trigger_tundisp'] - (recovered_dt_initial + recovered_dt_final) / 2.0
+            else:
+                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_t*' field")
+
+            print >>sys.stderr, 'frb_olympics: dedisperser=%s, recovered snr=%s' % (name, recovered_snr)
+
+            search_results_json = { 'recovered_snr': recovered_snr,
+                                    'recovered_dm': recovered_dm,
+                                    'recovered_tcentral': recovered_tc }
+
+            json_output['search_results'].append(search_results_json)
+            
+        return json_output
+
+
+####################################################################################################
+
+
+def make_snr_plot(plot_filename, xvec, snr_arr, xmin, xmax, xlabel, dedisperser_names):
+    color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c' ]
+
+    xvec = np.array(xvec)
+    nds = len(dedisperser_names)
+    nmc = len(xvec)
+
+    assert xvec.ndim == 1
+    assert nds <= len(color_list)
+    assert snr_arr.shape == (nmc, nds)
+    assert np.all(snr_arr >= 0.0)
+
+    slist = [ ]
+    for ids in xrange(nds):
+        slist.append(plt.scatter(xvec, snr_arr[:,ids], s=5, color=color_list[ids], marker='o'))
+
+    plt.xlim(xmin, xmax)
+    plt.ylim(0.0, max(np.max(snr_arr),1.1))
+    plt.axhline(y=1, ls=':', color='k')
+    plt.xlabel(xlabel)
+    plt.ylabel('Recovered SNR')
+    plt.legend(slist, dedisperser_names, scatterpoints=1, loc='lower left')
+
+    print >>sys.stderr, 'writing', plot_filename
+    plt.savefig(plot_filename)
+    plt.clf()
+    
+
+def make_snr_plots(json_filename, json_obj=None):
+    if not json_filename.endswith('.json'):
+        raise RuntimeError("frb_olympics.make_snr_plots(): 'json_filename' argument must end in .json")
+
+    if json_obj is None:
+        print >>sys.stderr, 'reading', json_filename
+        json_obj = json.load(open(json_filename))
+
+    dedisperser_names = json_obj["dedisperser_names"];
+    nmc = json_obj["nmc"]
+    nds = len(dedisperser_names)
+
+    snr_arr = np.zeros((nmc,nds))
+    for imc in xrange(nmc):
+        true_snr = json_obj['sims'][imc]['true_snr']
+        for ids in xrange(nds):
+            recovered_snr = json_obj['sims'][imc]['search_results'][ids]['recovered_snr']
+            snr_arr[imc,ids] = recovered_snr / true_snr
+
+    make_snr_plot(plot_filename = ('%s_snr_vs_dm.pdf' % json_filename[:-5]),
+                  xvec = [ s['true_dm'] for s in json_obj['sims'] ],
+                  snr_arr = snr_arr,
+                  xmin = json_obj['search_params']['dm_min'],
+                  xmax = json_obj['search_params']['dm_max'],
+                  xlabel = 'DM',
+                  dedisperser_names = dedisperser_names)
+
+    if json_obj['search_params']['sm_min'] < json_obj['search_params']['sm_max']:
+        make_snr_plot(plot_filename = ('%s_snr_vs_sm.pdf' % json_filename[:-5]),
+                      xvec = [ s['true_sm'] for s in json_obj['sims'] ],
+                      snr_arr = snr_arr,
+                      xmin = json_obj['search_params']['sm_min'],
+                      xmax = json_obj['search_params']['sm_max'],
+                      xlabel = 'SM',
+                      dedisperser_names = dedisperser_names)
+
+    if json_obj['search_params']['beta_min'] < json_obj['search_params']['beta_max']:
+        make_snr_plot(plot_filename = ('%s_snr_vs_beta.pdf' % json_filename[:-5]),
+                      xvec = [ s['true_beta'] for s in json_obj['sims'] ],
+                      snr_arr = snr_arr,
+                      xmin = json_obj['search_params']['beta_min'],
+                      xmax = json_obj['search_params']['beta_max'],
+                      xlabel = 'spectral index',
+                      dedisperser_names = dedisperser_names)
+
+    if json_obj['search_params']['width_sec_min'] < json_obj['search_params']['width_sec_max']:
+        make_snr_plot(plot_filename = ('%s_snr_vs_width.pdf' % json_filename[:-5]),
+                      xvec = [ s['true_width'] for s in json_obj['sims'] ],
+                      snr_arr = snr_arr,
+                      xmin = json_obj['search_params']['width_sec_min'],
+                      xmax = json_obj['search_params']['width_sec_max'],
+                      xlabel = 'intrinsic width [sec]',
+                      dedisperser_names = dedisperser_names)
+
+
+####################################################################################################
+
+
+
+def parse_kv_file(filename):
+    """Reads key/value pairs from file, and returns a string->string dictionary."""
+    
+    ret = { }
+
+    for line in open(filename):
+        if (len(line) > 0) and (line[-1] == '\n'):
+            line = line[:-1]
+            
+        i = line.find('#')
+        if i >= 0:
+            line = line[:i]
+
+        t = line.split()
+        if len(t) == 0:
+            continue
+        if (len(t) != 3) or (t[1] != '='):
+            raise RuntimeError("%s: parse error in line '%s'" % (filename,line))
+        if ret.has_key(t[0]):
+            raise RuntimeError("%s: duplicate key '%s'" % (filename,t[0]))
+        ret[t[0]] = t[2]
 
     return ret
 
 
-####################################################################################################
-#
-# Algorithm registry
+class search_params:
+    # a list of (field_name, field_type) pairs
+    all_fields = [ ('dm_min', float),
+                   ('dm_max', float),
+                   ('sm_min', float),
+                   ('sm_max', float),
+                   ('beta_min', float),
+                   ('beta_max', float),
+                   ('width_sec_min', float),
+                   ('width_sec_max', float),
+                   ('nfreq', int),
+                   ('freq_lo_MHz', float),
+                   ('freq_hi_MHz', float),
+                   ('dt_sec', float),
+                   ('nsamples', int) ]
 
 
-algo_list = [ ]
-memhack_list = [ ]
-ini_flag = False
+    def __init__(self, filename):
+        kv_pairs = parse_kv_file(filename)
 
+        for (field_name, field_type) in self.all_fields:
+            try:
+                field_value = kv_pairs.pop(field_name)
+                field_value = field_type(field_value)
+            except KeyError:
+                raise RuntimeError("%s: field '%s' not found" % (filename, field_name))
+            except ValueError:
+                raise RuntimeError("%s: parse error in field '%s' (value='%s')" % (filename, field_name, field_value))
 
-def add_algo(algo, memhack=1):
-    assert memhack >= 1
-    algo_list.append(algo)
-    memhack_list.append(memhack)
+            setattr(self, field_name, field_value)
 
+        if len(kv_pairs) > 0:
+            raise RuntimeError("%s: unrecognized parameter(s) in file: %s" % (filename, ', '.join(kv_pairs.keys())))
 
-def init_algorithms(search_params):
-    global ini_flag
+        assert self.dm_min >= 0.0, filename + ": failed assert: dm_min >= 0.0"
+        assert self.sm_min >= 0.0, filename + ": failed assert: sm_min >= 0.0"
+        assert self.width_sec_min >= 0.0, filename + ": failed assert: width_sec_min >= 0.0"
+        assert self.nsamples > 0, filename + ": failed assert: nsamples > 0"
+        assert self.nfreq > 0, filename + ": failed assert: nfreq > 0"
 
-    if ini_flag:
-        raise RuntimeError('double call to frb_olympics.init_algorithms()')
+        # The choice of ranges here is intended to guard against accidentally using the wrong units
+        # (e.g. GHz instead of MHz, millseconds instead of seconds)
+        assert self.freq_lo_MHz >= 100.0, filename + ": failed assert: freq_lo_MHz >= 100.0"
+        assert self.dt_sec >= 2.0e-6, filename + ": failed assert: dt_sec >= 2.0e-6"
+        assert self.dt_sec <= 0.01, filename + ": failed assert: dt_sec <= 0.01"
 
-    assert len(algo_list) > 0
+        assert self.dm_min <= self.dm_max, filename + ": failed assert: dm_min <= dm_max"
+        assert self.sm_min <= self.sm_max, filename + ": failed assert: sm_min <= sm_max"
+        assert self.width_sec_min <= self.width_sec_max, filename + ": failed assert: width_sec_min <= width_sec_max"
+        assert self.freq_lo_MHz < self.freq_hi_MHz, filename + ": failed assert: freq_lo_MHz < freq_hi_MHz"
 
-    for algo in algo_list:
-        algo.search_init(search_params)
+        # One last, less trivial consistency test: the total timestream length must be at least 
+        # 20% larger than the max in-band dispersion delay.
 
-        required_fields = [ 'name', 'search_params', 'debug_buffer_ndm', 
-                            'debug_buffer_nt', 'search_gb', 'search_init', 
-                            'search_start', 'search_chunk', 'search_end' ]
+        timestream_length = self.nsamples * self.dt_sec
+        max_dispersion_delay = dispersion_delay(self.dm_max, self.freq_lo_MHz) - dispersion_delay(self.dm_max, self.freq_hi_MHz)
 
-        missing_fields = [ f for f in required_fields if not hasattr(algo,f) ]
+        assert timestream_length > 1.2 * max_dispersion_delay, \
+            filename + ': failed assert: timestream_length > 1.2 * max_dispersion_delay'
 
-        if len(missing_fields) > 0:
-            raise RuntimeError('algorithm object is missing the following required fields: %s' % missing_fields)
-
-        assert isinstance(algo.name, basestring)
-        assert len(algo.name) > 0
-        assert algo.debug_buffer_ndm > 0
-        assert algo.debug_buffer_nt > 0
-        assert algo.search_gb >= 0.0
-
-    ini_flag = True
-
-
-def enumerate_algorithms_with_memhack():
-    """Generates (ialgo,algo) pairs.  Note that this calls search_start() and search_end() "under the hood"."""
-
-    for (ialgo,(algo,memhack)) in enumerate(zip(algo_list,memhack_list)):
-        assert memhack > 0
-        assert mpi_tasks_per_node % memhack == 0
-
-        nbarriers1 = mpi_rank_within_node % memhack
-        nbarriers2 = memhack - nbarriers1
-
-        for i in xrange(nbarriers1):
-            mpi_barrier()
-
-        algo.search_start(mpi_rank_within_node // memhack)
-
-        yield (ialgo, algo)
-
-        algo.search_end()
-        
-        for i in xrange(nbarriers2):
-            mpi_barrier()
 
 
 ####################################################################################################
 
 
-class comparison_outputs:
-    def __init__(self, noise_data, pulse_data, search_params=None):
-        assert noise_data.ndim == 2
-        assert pulse_data.ndim == 2
-        assert pulse_data.shape[1] == noise_data.shape[1] + 5
+class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
+    """
+    Similar to rf_pipelines.gaussian_noise_stream, but allows the stream to be rerun by saving its state:
+    
+        s = rerunnable_gaussian_noise_stream(...)
+        saved_state = s.get_state()
+           # ... run stream ...
+        s.set_state(saved_state)
+           # ... rerunning stream will give same output ...
 
-        self.npulse = pulse_data.shape[0]
-        self.nnoise = noise_data.shape[0]
-        self.nalgo = noise_data.shape[1]
+    If 'no_noise_flag' is True, then the stream will output zeroes instead of Gaussian random numbers.
+    """
 
-        if self.nnoise >= 2:
-            self.noise_mean = np.mean(noise_data, axis=0)
-            self.noise_stddev = np.std(noise_data, axis=0)
+    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, simulate_noise=True, state=None, nt_chunk=None):
+        if nt_tot <= 0:
+            raise RuntimeError('rerunnable_gaussian_noise_stream constructor: nt_tot must be > 0')
+        if nt_chunk is None:
+            nt_chunk = min(1024, nt_tot)
 
-        self.pulse_arrival_time = pulse_data[:,0]
-        self.pulse_intrinsic_width = pulse_data[:,1]
-        self.pulse_dm = pulse_data[:,2]
-        self.pulse_sm = pulse_data[:,3]
-        self.pulse_beta = pulse_data[:,4]
-        self.pulse_data = pulse_data[:,5:]
-        self.noise_data = noise_data
+        rf_pipelines.py_wi_stream.__init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, dt_sample, nt_chunk)
 
-        if self.nnoise >= 2 and self.npulse >= 1:
-            # "Sigma" statistic (to be replaced later by something better)
-            self.pulse_sigma = (self.pulse_data - self.noise_mean[np.newaxis,:]) / self.noise_stddev[np.newaxis,:]
-
-        self.search_params = search_params
+        self.simulate_noise = simulate_noise
+        self.nt_tot = nt_tot
+        self.nt_chunk = nt_chunk
+        self.set_state(state)
 
 
-    def plot_histogram(self, ialgo, filename, xmax=None):
-        import matplotlib.pyplot as plt
+    def stream_body(self, run_state):
+        run_state.start_substream(0.0)
 
-        assert self.nnoise > 0 and self.npulse > 0
-        assert 0 <= ialgo < self.nalgo
+        it = 0
+        while it < self.nt_tot:
+            nt = min(self.nt_tot-it, self.nt_chunk)
+            intensity = self.state.standard_normal((self.nfreq,nt)) if self.simulate_noise else np.zeros((self.nfreq,nt), dtype=np.float)
+            weights = np.ones((self.nfreq, nt), dtype=np.float)
+            run_state.write(intensity, weights)
+            it += self.nt_chunk
 
-        plt.hist(self.noise_data[:,ialgo], label='noise-only sims')
-        plt.hist(self.pulse_data[:,ialgo], label='pulse-only sims')
-
-        plt.xlim(xmin=0)
-        if xmax is not None:
-            plt.xlim(xmax=xmax)
+        run_state.end_substream()
         
-        plt.xlabel('$T$')
-        plt.ylabel('Counts')
-        plt.legend()
 
-        plt.savefig(filename)
-        plt.clf()
-        print 'wrote', filename
+    def get_state(self):
+        return copy.copy(self.state)
 
 
-    def plot_sigma(self, stem, ialgo_list=None, color_list=None, marker_list=None, label_list=None, legloc='lower left', **kwds):
-        """
-        Writes two files ${stem}_sigma.pdf and ${stem}_sigmap.pdf
-
-        The **kwds can be any of: dm_min, dm_max, sm_min, sm_max, beta_min, beta_max
-
-        These influence the plot xranges, which are given by (in order of priority):
-           - kwds to this routine
-           - values in the search_params specified at construction, if not None
-           - matplotlib defaults
-        """
-
-        import matplotlib.pyplot as plt
-
-        assert self.npulse > 0
-
-        if ialgo_list is None:
-            ialgo_list = range(self.nalgo)
-
-        if color_list is None:
-            color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c' ]
-
-        if marker_list is None:
-            marker_list = [ 'o' for i in xrange(len(ialgo_list)) ]
-
-        if label_list is None:
-            assert len(algo_list) == self.nalgo
-            label_list = [ algo.name for algo in algo_list ]
-
-        # replace underscores with hyphens so latex doesn't get confused
-        label_list = [ l.replace('_','-') for l in label_list ]
-
-        assert len(color_list) >= len(ialgo_list)
-        assert len(marker_list) >= len(ialgo_list)
-        assert len(label_list) == len(ialgo_list)
-
-        # (xdata, xlabel, xstem, xmin_str, xmax_str) triples
-        x_todo = [ (self.pulse_dm, 'DM', '', 'dm_min', 'dm_max') ]
-        if (np.max(self.pulse_sm) - np.min(self.pulse_sm)) > 1.0e-3:
-            x_todo.append((self.pulse_sm, 'SM', '_sm', 'sm_min', 'sm_max'))
-        if (np.max(self.pulse_beta) - np.min(self.pulse_beta)) > 1.0e-3:
-            x_todo.append((self.pulse_beta, 'spectral index', '_beta', 'beta_min', 'beta_max'))
-        if (np.max(self.pulse_intrinsic_width) - np.min(self.pulse_intrinsic_width)) > 1.0e-5:
-            x_todo.append((self.pulse_intrinsic_width, 'intrinsic_width', '_width', 'width_min', 'width_max'))
-
-        # (ydata, ylabel, ystem) triples
-        y_todo = [ (self.pulse_data / 30.0, r"$\sigma'$", '_sigmap') ]
-        if hasattr(self, 'pulse_sigma'):
-            y_todo.append((self.pulse_sigma, r"$\sigma$", '_sigma'))
-
-                   
-        for (xdata, xlabel, xstem, xmin_str, xmax_str) in x_todo:
-            for (ydata, ylabel, ystem) in y_todo:
-                filename = ('%s%s%s.pdf' % (stem, xstem, ystem))
-
-                slist = [ ]
-                for (i,ialgo) in enumerate(ialgo_list):
-                    slist.append(plt.scatter(xdata, ydata[:,ialgo], s=5, color=color_list[i], marker=marker_list[i]))
-
-                if kwds.has_key(xmin_str):
-                    plt.xlim(xmin = kwds[xmin_str])
-                elif self.search_params is not None:
-                    plt.xlim(xmin = getattr(self.search_params, xmin_str))
-
-                if kwds.has_key(xmax_str):
-                    plt.xlim(xmax = kwds[xmax_str])
-                elif self.search_params is not None:
-                    plt.xlim(xmax = getattr(self.search_params, xmax_str))
-
-                plt.ylim(ymin=0)
-                plt.xlabel(xlabel)
-                plt.ylabel(ylabel)
-                plt.legend(slist, label_list, scatterpoints=1, loc=legloc)
-
-                plt.savefig(filename)
-                plt.clf()
-                print 'wrote', filename
+    def set_state(self, state):
+        if state is None:
+            self.state = np.random.RandomState()
+        else:
+            assert isinstance(state, np.random.RandomState)
+            self.state = copy.copy(state)
