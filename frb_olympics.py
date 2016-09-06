@@ -13,6 +13,7 @@ import rf_pipelines
 
 # Note: cut-and-paste from "simpulse"
 def dispersion_delay(dm, freq_MHz):
+    """Returns dispersion delay in seconds, for given DM and frequency."""
     return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
 
@@ -33,28 +34,7 @@ if is_mpi:
     import mpi4py.MPI
     mpi_rank = mpi4py.MPI.COMM_WORLD.rank
     mpi_size = mpi4py.MPI.COMM_WORLD.size
-    mpi_bcast = mpi4py.MPI.COMM_WORLD.bcast
     mpi_gather = lambda x: mpi4py.MPI.COMM_WORLD.gather(x, root=0)
-    mpi_barrier = mpi4py.MPI.COMM_WORLD.Barrier
-    mpi_rank_within_node = 0    # determined below
-    mpi_tasks_per_node = 0      # determined below
-
-    import socket
-    my_hostname = socket.gethostname()
-    all_hostnames = mpi4py.MPI.COMM_WORLD.allgather(my_hostname)
-    mult = { }
-
-    for (i,h) in enumerate(all_hostnames):
-        mult[h] = mult.get(h,0) + 1
-        if h == my_hostname:
-            mpi_tasks_per_node += 1
-            if i < mpi_rank:
-                mpi_rank_within_node += 1
-
-    # check
-    for (k,v) in mult.iteritems():
-        if v != mpi_tasks_per_node:
-            raise RuntimeError('expected all hostnames to have equal numbers of MPI tasks')
         
 else:
     # Hmm, mpi4py failed to load... is this because we're a serial job, or for some other reason?
@@ -71,11 +51,7 @@ else:
     # OK, satisfied that we're a serial job!
     mpi_rank = 0
     mpi_size = 1
-    mpi_bcast = lambda x: x
     mpi_gather = lambda x: [x]
-    mpi_rank_within_node = 0
-    mpi_tasks_per_node = 1
-    mpi_barrier = lambda: None
 
 
 def init_mpi_log_files(stem):
@@ -99,7 +75,19 @@ def init_mpi_log_files(stem):
 
 
 class olympics:
+    """
+    This is the class used to maintain state for an FRB olympics run.
+    See examples/example0_bonsai/run-example0.py for an example of how to use it.
+    """
+
     def __init__(self, sparams, snr=30.0, simulate_noise=True):
+        """
+        The 'sparams' arg should either be an object of class search_params (see below for definition)
+        or a string, assumed to be a search_params filename.
+
+        The 'snr' arg is the signal-to-noise of the FRB, assuming unit variance.
+        """
+
         self.simulate_noise = simulate_noise
         self.snr = snr
 
@@ -120,10 +108,16 @@ class olympics:
 
 
         # The dedisperser_list is a list of (name, transform) pairs
+        # where the 'transform' is an object of class rf_pipelines.wi_transform.
         self.dedisperser_list = [ ]
 
 
     def add_bonsai(self, config_hdf5_filename, name=None):
+        """
+        Adds a bonsai_dedisperser to the dedisperser_list.
+        Currently, this is the only type of dedisperser supported, but we hope to add more later!
+        """
+ 
         transform = rf_pipelines.bonsai_dedisperser(config_hdf5_filename)
 
         if name is None:
@@ -133,6 +127,8 @@ class olympics:
 
 
     def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
+        """Runs a set of Monte Carlo simulations."""
+
         if not json_filename.endswith('.json'):
             raise RuntimeError("frb_olympics.olympics.run(): 'json_filename' argument must end in .json")
         
@@ -193,7 +189,7 @@ class olympics:
 
 
     def run_one(self):
-        """Returns json object (not string representation).  Uses current state of stream"""
+        """Runs a single Monte Carlo simulation (helper function called by run())."""
         
         if len(self.dedisperser_list) == 0:
             raise RuntimeError('frb_olympics.olympics.run_one(): no dedispersers were defined')
@@ -208,12 +204,15 @@ class olympics:
         true_dt_initial = dispersion_delay(true_dm, self.sparams.freq_hi_MHz)
         true_dt_final = dispersion_delay(true_dm, self.sparams.freq_lo_MHz)
 
+        # Min/max allowed _undispersed_ arrival time
         timestream_length = self.sparams.nsamples * self.sparams.dt_sec
         tu_min = 0.05*timestream_length - true_dt_initial
         tu_max = 0.95*timestream_length - true_dt_final
         
         assert tu_min < tu_max
         true_tu = np.random.uniform(tu_min, tu_max);
+
+        # Convert undispersed arrival time to central arrival time.
         true_tc = true_tu + (true_dt_initial + true_dt_final) / 2.
         
         t_frb = rf_pipelines.frb_injector_transform(snr = self.snr,
@@ -231,7 +230,10 @@ class olympics:
                         'true_width': true_width,
                         'true_tcentral': true_tc,
                         'search_results': [ ] }
-        
+
+        # We save the RNG state and restore it below, so that each dedisperser "sees" the same
+        # noise realization.  At the end of run_one(), the RNG state has been advanced, so that
+        # subsequent calls to run_one() will produce a different noise realization.
         saved_state = self.stream.get_state()
 
         for (name, dedisperser) in self.dedisperser_list:
@@ -284,6 +286,8 @@ class olympics:
 
 
 def make_snr_plot(plot_filename, xvec, snr_arr, xmin, xmax, xlabel, dedisperser_names):
+    """Helper function called by make_snr_plots()."""
+
     color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c' ]
 
     xvec = np.array(xvec)
@@ -312,6 +316,11 @@ def make_snr_plot(plot_filename, xvec, snr_arr, xmin, xmax, xlabel, dedisperser_
     
 
 def make_snr_plots(json_filename, json_obj=None):
+    """
+    Makes plots of snr versus dm.  Also makes plots of snr versus sm/beta/width (if these parameters span a nonzero range).
+    This routine can be called to generate plots directly from a json file.
+    """
+
     if not json_filename.endswith('.json'):
         raise RuntimeError("frb_olympics.make_snr_plots(): 'json_filename' argument must end in .json")
 
@@ -396,6 +405,14 @@ def parse_kv_file(filename):
 
 
 class search_params:
+    """
+    Defines instrumental specs (frequency range, sampling rate, timestream length), and parameter ranges
+    for the FRB parameters (DM, SM, spectral index).
+
+    The constructor initializes the search_params from a simple text-based file format.  For an example
+    search_params file to illustrate the format, see examples/example0_bonsai/example0_search_params.txt.
+    """
+
     # a list of (field_name, field_type) pairs
     all_fields = [ ('dm_min', float),
                    ('dm_max', float),
@@ -479,6 +496,9 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         if nt_chunk is None:
             nt_chunk = min(1024, nt_tot)
 
+        # The constructor is responsible for initializing certain fields (nfreq, freq_lo_MHz,
+        # freq_hi_MHz, dt_sample, nt_maxwrite).  A convenient way to ensure that these fields 
+        # are initialized is to call the base class constructor.
         rf_pipelines.py_wi_stream.__init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, dt_sample, nt_chunk)
 
         self.simulate_noise = simulate_noise
@@ -488,6 +508,17 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
 
 
     def stream_body(self, run_state):
+        """
+        This is the function which needs to be implemented, in order to define a new stream.
+
+        The 'run_state' argument is a special object which writes chunks of data into the rf_pipelines
+        ring buffer.  The method run_state.write() is called to output one chunk of data, and the methods
+        run_state.start_substream() and run_state.end_substream() can be used to divide the stream into
+        multiple "substreams", although we don't do that here.
+
+        For more documentation on streams, see the rf_pipelines.py_wi_stream docstring.
+        """
+
         run_state.start_substream(0.0)
 
         it = 0
@@ -503,10 +534,13 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
         
 
     def get_state(self):
+        """Returns the current RNG state."""
         return copy.copy(self.state)
 
 
     def set_state(self, state):
+        """Restores the RNG state to a previous value, obtained by calling get_state()."""
+
         if state is None:
             self.state = np.random.RandomState()
         else:
