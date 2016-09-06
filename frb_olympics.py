@@ -235,6 +235,7 @@ class olympics:
         saved_state = self.stream.get_state()
 
         for (name, dedisperser) in self.dedisperser_list:
+            print >>sys.stderr, 'frb_olympics: running dedisperser', name
             self.stream.set_state(saved_state)
             
             pipeline_json = self.stream.run([t_frb, dedisperser], outdir=None, return_json=True)
@@ -491,6 +492,7 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
 
         it = 0
         while it < self.nt_tot:
+            print >>sys.stderr, 'frb_olympics: %s/%s samples processed so far' % (it, self.nt_tot)
             nt = min(self.nt_tot-it, self.nt_chunk)
             intensity = self.state.standard_normal((self.nfreq,nt)) if self.simulate_noise else np.zeros((self.nfreq,nt), dtype=np.float)
             weights = np.ones((self.nfreq, nt), dtype=np.float)
