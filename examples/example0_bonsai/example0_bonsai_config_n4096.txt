@@ -1,7 +1,7 @@
-# bonsai-mkweight example0_bonsai_config.txt example0_bonsai_config.hdf5
 #
-# Some of these parameters have default values and can be omitted, but
-# we include every parameter here for completeness.
+# Note: before running example0, both bonsai config files must be processed to hdf5 files with:
+#    bonsai-mkweight example0_bonsai_config_n2048.txt example0_bonsai_config_n2048.hdf5
+#    bonsai-mkweight example0_bonsai_config_n4096.txt example0_bonsai_config_n4096.hdf5
 #
 
 #

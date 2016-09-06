@@ -3,5 +3,6 @@
 import frb_olympics
 
 r = frb_olympics.olympics('example0_search_params.txt', simulate_noise=False)
-r.add_bonsai('example0_bonsai_config.hdf5', name='example0')
+r.add_bonsai('example0_bonsai_config_n2048.hdf5', name='2K-trees')
+r.add_bonsai('example0_bonsai_config_n4096.hdf5', name='4K-trees')
 r.run('example0.json', 128)
