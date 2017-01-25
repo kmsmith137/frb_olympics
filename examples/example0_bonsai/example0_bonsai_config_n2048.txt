@@ -45,7 +45,7 @@ freq_hi_MHz = 800.0   # MHz
 dt_sample = 0.001     # seconds
 
 # Number of threads per beam.
-nthreads = 2
+nthreads = 1
 
 #
 # Each tree incrementally processes data in chunks.  nt_tree is the number of "tree" time samples in
