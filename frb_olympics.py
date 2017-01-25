@@ -126,8 +126,16 @@ class olympics:
         self.dedisperser_list.append((name, transform))
 
 
-    def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
-        """Runs a set of Monte Carlo simulations."""
+    def run(self, json_filename, nmc, clobber=False, mpi_log_files=True, verbosity=2):
+        """
+        Runs a set of Monte Carlo simulations.
+
+        The 'verbosity' argument has the same meaning as in rf_pipelines.py_wi_stream.run():
+            0 = no output
+            1 = high-level summary output (names of transforms, number of samples processed etc.)
+            2 = show all output files
+            3 = debug trace through pipeline
+        """
 
         if not json_filename.endswith('.json'):
             raise RuntimeError("frb_olympics.olympics.run(): 'json_filename' argument must end in .json")
@@ -171,7 +179,7 @@ class olympics:
 
         for imc in xrange(mpi_rank, nmc, mpi_size):
             print >>sys.stderr, 'frb_olympics: starting Monte Carlo %d/%d' % (imc, nmc)
-            json_sim = self.run_one()
+            json_sim = self.run_one(verbosity=verbosity)
             json_sims.append(json_sim)
 
         json_sims = mpi_gather(json_sims)
@@ -188,9 +196,17 @@ class olympics:
             make_snr_plots(json_filename, json_out)
 
 
-    def run_one(self):
-        """Runs a single Monte Carlo simulation (helper function called by run())."""
-        
+    def run_one(self, verbosity=2):
+        """
+        Runs a single Monte Carlo simulation (helper function called by run()).
+
+        The 'verbosity' argument has the same meaning as in rf_pipelines.py_wi_stream.run():
+            0 = no output
+            1 = high-level summary output (names of transforms, number of samples processed etc.)
+            2 = show all output files
+            3 = debug trace through pipeline
+        """
+
         if len(self.dedisperser_list) == 0:
             raise RuntimeError('frb_olympics.olympics.run_one(): no dedispersers were defined')
 
@@ -239,8 +255,8 @@ class olympics:
         for (name, dedisperser) in self.dedisperser_list:
             print >>sys.stderr, 'frb_olympics: running dedisperser', name
             self.stream.set_state(saved_state)
-            
-            pipeline_json = self.stream.run([t_frb, dedisperser], outdir=None, return_json=True)
+
+            pipeline_json = self.stream.run([t_frb, dedisperser], outdir=None, verbosity=verbosity, return_json=True)
             
             # A kludge: eventually, the run() return value will be a json object, but for now it returns
             # the string representation, which can be converted to a json object by calling json.loads().
@@ -278,7 +294,7 @@ class olympics:
                                     'recovered_tcentral': recovered_tc }
 
             json_output['search_results'].append(search_results_json)
-            
+
         return json_output
 
 
