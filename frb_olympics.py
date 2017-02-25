@@ -112,13 +112,13 @@ class olympics:
         self.dedisperser_list = [ ]
 
 
-    def add_bonsai(self, config_hdf5_filename, name=None):
+    def add_bonsai(self, config_filename, name=None):
         """
         Adds a bonsai_dedisperser to the dedisperser_list.
         Currently, this is the only type of dedisperser supported, but we hope to add more later!
         """
  
-        transform = rf_pipelines.bonsai_dedisperser(config_hdf5_filename)
+        transform = rf_pipelines.bonsai_dedisperser(config_filename, img_prefix=None, track_global_max=True)
 
         if name is None:
             name = transform.name
