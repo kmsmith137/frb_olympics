@@ -478,7 +478,7 @@ class search_params:
 ####################################################################################################
 
 
-class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
+class rerunnable_gaussian_noise_stream(rf_pipelines.wi_stream):
     """
     Similar to rf_pipelines.gaussian_noise_stream, but allows the stream to be rerun by saving its state:
     
@@ -492,46 +492,33 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.py_wi_stream):
     """
 
     def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, simulate_noise=True, state=None, nt_chunk=None):
+        rf_pipelines.wi_stream.__init__(self, 'rereunnable_gaussian_noise_stream')
+
         if nt_tot <= 0:
             raise RuntimeError('rerunnable_gaussian_noise_stream constructor: nt_tot must be > 0')
         if nt_chunk is None:
             nt_chunk = min(1024, nt_tot)
 
-        # The constructor is responsible for initializing certain fields (nfreq, freq_lo_MHz,
-        # freq_hi_MHz, dt_sample, nt_maxwrite).  A convenient way to ensure that these fields 
-        # are initialized is to call the base class constructor.
-        rf_pipelines.py_wi_stream.__init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, dt_sample, nt_chunk)
+        # These are members of the rf_pipelines.wi_stream base class.
+        self.nfreq = nfreq
+        self.nt_chunk = nt_chunk
 
         self.simulate_noise = simulate_noise
         self.nt_tot = nt_tot
-        self.nt_chunk = nt_chunk
         self.set_state(state)
 
 
-    def stream_body(self, run_state):
-        """
-        This is the function which needs to be implemented, in order to define a new stream.
+    def _fill_chunk(self, intensity, weights, pos):
+        assert intensity.shape == weights.shape == (self.nfreq, self.nt_chunk)
 
-        The 'run_state' argument is a special object which writes chunks of data into the rf_pipelines
-        ring buffer.  The method run_state.write() is called to output one chunk of data, and the methods
-        run_state.start_substream() and run_state.end_substream() can be used to divide the stream into
-        multiple "substreams", although we don't do that here.
+        if self.simulate_noise:
+            intensity[:,:] = self.state.standard_normal((self.nfreq, self.nt_chunk))
+        else:
+            intensity[:,:] = np.zeros((self.nfreq, self.nt_chunk), dtype=np.float32)
 
-        For more documentation on streams, see the rf_pipelines.py_wi_stream docstring.
-        """
+        weights[:,:] = np.ones((self.nfreq, self.nt_chunk), dtype=np.float32)
 
-        run_state.start_substream(0.0)
-
-        it = 0
-        while it < self.nt_tot:
-            print >>sys.stderr, 'frb_olympics: %s/%s samples processed so far' % (it, self.nt_tot)
-            nt = min(self.nt_tot-it, self.nt_chunk)
-            intensity = self.state.standard_normal((self.nfreq,nt)) if self.simulate_noise else np.zeros((self.nfreq,nt), dtype=np.float)
-            weights = np.ones((self.nfreq, nt), dtype=np.float)
-            run_state.write(intensity, weights)
-            it += self.nt_chunk
-
-        run_state.end_substream()
+        return (pos + self.nt_chunk) < self.nt_tot
         
 
     def get_state(self):
