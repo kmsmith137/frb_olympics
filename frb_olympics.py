@@ -108,7 +108,7 @@ class olympics:
 
 
         # The dedisperser_list is a list of (name, transform) pairs
-        # where the 'transform' is an object of class rf_pipelines.wi_transform.
+        # where the 'transform' is an object of class rf_pipelines.pipeline_object.
         self.dedisperser_list = [ ]
 
 
@@ -118,8 +118,12 @@ class olympics:
         Currently, this is the only type of dedisperser supported, but we hope to add more later!
         """
  
-        transform = rf_pipelines.bonsai_dedisperser(config_filename, img_prefix=None, track_global_max=True, dm_min=dm_min,
-                                                    dm_max=dm_max, use_analytic_normalization=use_analytic_normalization)
+        transform = rf_pipelines.bonsai_dedisperser(config_filename, 
+                                                    fill_rfi_mask = False, 
+                                                    track_global_max = True, 
+                                                    use_analytic_normalization = use_analytic_normalization,
+                                                    dm_min = dm_min,
+                                                    dm_max = dm_max)
 
         if name is None:
             name = transform.name
@@ -219,6 +223,7 @@ class olympics:
         t_frb = rf_pipelines.frb_injector_transform(snr = self.snr,
                                                     undispersed_arrival_time = true_tu,
                                                     dm = true_dm,
+                                                    variance = 1.0,
                                                     intrinsic_width = true_width,
                                                     sm = true_sm,
                                                     spectral_index = true_beta)
@@ -240,16 +245,14 @@ class olympics:
         for (name, dedisperser) in self.dedisperser_list:
             print >>sys.stderr, 'frb_olympics: running dedisperser', name
             self.stream.set_state(saved_state)
-            
-            pipeline_json = self.stream.run([t_frb, dedisperser], outdir=None, return_json=True)
-            
-            # A kludge: eventually, the run() return value will be a json object, but for now it returns
-            # the string representation, which can be converted to a json object by calling json.loads().
-            pipeline_json = json.loads(pipeline_json)
+
+            p = rf_pipelines.pipeline([self.stream, t_frb, dedisperser])
+            pipeline_json = p.run(outdir=None)
+            p.unbind()
             
             # We're only interested in the part of the json output from the last transform (the dedisperser).
-            pipeline_json = pipeline_json[0]['transforms'][-1]
-            
+            pipeline_json = pipeline_json['pipeline'][-1]
+
             if not pipeline_json.has_key('frb_global_max_trigger'):
                 raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger' field")
             if not pipeline_json.has_key('frb_global_max_trigger_dm'):
@@ -503,9 +506,18 @@ class rerunnable_gaussian_noise_stream(rf_pipelines.wi_stream):
         self.nfreq = nfreq
         self.nt_chunk = nt_chunk
 
+        self.freq_lo_MHz = freq_lo_MHz
+        self.freq_hi_MHz = freq_hi_MHz
+        self.dt_sample = dt_sample
         self.simulate_noise = simulate_noise
         self.nt_tot = nt_tot
         self.set_state(state)
+
+
+    def _bind_stream(self, json_attrs):
+        json_attrs['freq_lo_MHz'] = self.freq_lo_MHz
+        json_attrs['freq_hi_MHz'] = self.freq_hi_MHz
+        json_attrs['dt_sample'] = self.dt_sample
 
 
     def _fill_chunk(self, intensity, weights, pos):
