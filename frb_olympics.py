@@ -134,13 +134,13 @@ class olympics:
                                                              dm_max = dm_max))
 
 
-    def add_bb_dedisperser(self, dm_tol, pulse_width_ms, name=None, verbosity=1):
+    def add_bb_dedisperser(self, dm_tol, dm_t0, name=None, verbosity=1):
         """Adds a bonsai_dedisperser to the dedisperser_list."""
 
         self.add_dedisperser(rf_pipelines.bb_dedisperser(dm_start = self.sparams.dm_min,
                                                          dm_end = self.sparams.dm_max,
                                                          dm_tol = dm_tol,
-                                                         pulse_width_ms = pulse_width_ms,
+                                                         dm_t0 = dm_t0,
                                                          nt_in = self.sparams.nsamples,
                                                          verbosity = verbosity))
 
