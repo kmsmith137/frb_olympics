@@ -112,23 +112,37 @@ class olympics:
         self.dedisperser_list = [ ]
 
 
-    def add_bonsai(self, config_filename, name=None, use_analytic_normalization=True, dm_min=None, dm_max=None):
-        """
-        Adds a bonsai_dedisperser to the dedisperser_list.
-        Currently, this is the only type of dedisperser supported, but we hope to add more later!
-        """
- 
-        transform = rf_pipelines.bonsai_dedisperser(config_filename, 
-                                                    fill_rfi_mask = False, 
-                                                    track_global_max = True, 
-                                                    use_analytic_normalization = use_analytic_normalization,
-                                                    dm_min = dm_min,
-                                                    dm_max = dm_max)
+    def add_dedisperser(self, transform, name=None):
+        """Adds a dedisperser (represented by 'transform', an object of class rf_pipelines.pipeline_object) to the dedisperser_list."""
+
+        assert isinstance(transform, rf_pipelines.pipeline_object)
 
         if name is None:
             name = transform.name
 
         self.dedisperser_list.append((name, transform))
+
+
+    def add_bonsai(self, config_filename, name=None, use_analytic_normalization=True, dm_min=None, dm_max=None):
+        """Adds a bonsai_dedisperser to the dedisperser_list."""
+ 
+        self.add_dedisperser(rf_pipelines.bonsai_dedisperser(config_filename, 
+                                                             fill_rfi_mask = False, 
+                                                             track_global_max = True, 
+                                                             use_analytic_normalization = use_analytic_normalization,
+                                                             dm_min = dm_min,
+                                                             dm_max = dm_max))
+
+
+    def add_bb_dedisperser(self, dm_tol, pulse_width_ms, name=None, verbosity=1):
+        """Adds a bonsai_dedisperser to the dedisperser_list."""
+
+        self.add_dedisperser(rf_pipelines.bb_dedisperser(dm_start = self.sparams.dm_min,
+                                                         dm_end = self.sparams.dm_max,
+                                                         dm_tol = dm_tol,
+                                                         pulse_width_ms = pulse_width_ms,
+                                                         nt_in = self.sparams.nsamples,
+                                                         verbosity = verbosity))
 
 
     def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
