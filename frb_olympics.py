@@ -126,31 +126,35 @@ class olympics:
     def add_bonsai(self, config_filename, name=None, use_analytic_normalization=True, dm_min=None, dm_max=None):
         """Adds a bonsai_dedisperser to the dedisperser_list."""
  
-        self.add_dedisperser(rf_pipelines.bonsai_dedisperser(config_filename, 
-                                                             fill_rfi_mask = False, 
-                                                             track_global_max = True, 
-                                                             use_analytic_normalization = use_analytic_normalization,
-                                                             dm_min = dm_min,
-                                                             dm_max = dm_max))
+        t = rf_pipelines.bonsai_dedisperser(config_filename, 
+                                            fill_rfi_mask = False, 
+                                            track_global_max = True, 
+                                            use_analytic_normalization = use_analytic_normalization,
+                                            dm_min = dm_min,
+                                            dm_max = dm_max)
+
+        self.add_dedisperser(t, name)
 
 
     def add_bb_dedisperser(self, dm_tol, dm_t0, name=None, verbosity=1):
         """Adds a bb_dedisperser to the dedisperser_list."""
 
-        self.add_dedisperser(rf_pipelines.bb_dedisperser(dm_start = self.sparams.dm_min,
-                                                         dm_end = self.sparams.dm_max,
-                                                         dm_tol = dm_tol,
-                                                         dm_t0 = dm_t0,
-                                                         nt_in = self.sparams.nsamples,
-                                                         verbosity = verbosity))
+        t = rf_pipelines.bb_dedisperser(dm_start = self.sparams.dm_min,
+                                        dm_end = self.sparams.dm_max,
+                                        dm_tol = dm_tol,
+                                        dm_t0 = dm_t0,
+                                        nt_in = self.sparams.nsamples,
+                                        verbosity = verbosity)
+
+        self.add_dedisperser(t, name)
 
 
-    def add_bz_fdmt(self):
+    def add_bz_fdmt(self, name='FDMT'):
         """Adds an FDMT dedisperser to the dedisperser_list."""
 
         # No free parameters!
         t = rf_pipelines.bz_fdmt_dedisperser(self.sparams.dm_max, self.sparams.nsamples)
-        self.add_dedisperser(t, name='FDMT')
+        self.add_dedisperser(t, name)
 
 
     def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
