@@ -135,7 +135,7 @@ class olympics:
 
 
     def add_bb_dedisperser(self, dm_tol, dm_t0, name=None, verbosity=1):
-        """Adds a bonsai_dedisperser to the dedisperser_list."""
+        """Adds a bb_dedisperser to the dedisperser_list."""
 
         self.add_dedisperser(rf_pipelines.bb_dedisperser(dm_start = self.sparams.dm_min,
                                                          dm_end = self.sparams.dm_max,
@@ -143,6 +143,14 @@ class olympics:
                                                          dm_t0 = dm_t0,
                                                          nt_in = self.sparams.nsamples,
                                                          verbosity = verbosity))
+
+
+    def add_bz_fdmt(self):
+        """Adds an FDMT dedisperser to the dedisperser_list."""
+
+        # No free parameters!
+        t = rf_pipelines.bz_fdmt_dedisperser(self.sparams.dm_max, self.sparams.nsamples)
+        self.add_dedisperser(t, name='FDMT')
 
 
     def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
