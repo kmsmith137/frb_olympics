@@ -143,6 +143,9 @@ class olympics:
                                         dm_end = self.sparams.dm_max,
                                         dm_tol = dm_tol,
                                         dm_t0 = dm_t0,
+                                        scrunch = False,
+                                        sc_tol = 1.15,
+                                        sc_t0 = 0.0,
                                         nt_in = self.sparams.nsamples,
                                         verbosity = verbosity)
 
