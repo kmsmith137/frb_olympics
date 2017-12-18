@@ -10,11 +10,9 @@ import matplotlib.pyplot as plt
 
 import rf_pipelines
 
-
-# Note: cut-and-paste from "simpulse"
-def dispersion_delay(dm, freq_MHz):
-    """Returns dispersion delay in seconds, for given DM and frequency."""
-    return 4.148806e3 * dm / (freq_MHz * freq_MHz);
+from utils import dispersion_delay
+from search_params import search_params
+from rerunnable_gaussian_noise_stream import rerunnable_gaussian_noise_stream
 
 
 ####################################################################################################
@@ -95,7 +93,7 @@ class olympics:
             self.sparams = sparams
         elif isinstance(sparams, basestring):
             # if 'sparams' is a string, then assume it's the filename
-            self.sparams = search_params(sparams)
+            self.sparams = search_params.from_filename(sparams)
         else:
             raise RuntimeError("frb_olympics.olympics constructor: expected 'sparams' argument to be either a string or an object of class frb_olympics.search_params")
 
@@ -103,7 +101,7 @@ class olympics:
                                                        nt_tot = self.sparams.nsamples, 
                                                        freq_lo_MHz = self.sparams.freq_lo_MHz, 
                                                        freq_hi_MHz = self.sparams.freq_hi_MHz, 
-                                                       dt_sample = self.sparams.dt_sec,
+                                                       dt_sample = self.sparams.dt_sample,
                                                        simulate_noise = simulate_noise)
 
 
@@ -176,15 +174,12 @@ class olympics:
             init_mpi_log_files(stem = json_filename[:-5])
 
         if mpi_rank == 0:
-            json_out = { 'simulate_noise': self.simulate_noise,
+            json_out = { 'search_params': self.sparams.jsonize(),
+                         'simulate_noise': self.simulate_noise,
                          'snr': self.snr,
                          'nmc': nmc,
                          'dedisperser_names': [ ],
-                         'search_params': { },
                          'sims': [ ] }
-        
-            for (field_name, field_type) in self.sparams.all_fields:
-                json_out["search_params"][field_name] = getattr(self.sparams, field_name)
             
             for (dedisperser_name, transform) in self.dedisperser_list:
                 json_out["dedisperser_names"].append(dedisperser_name)
@@ -232,14 +227,14 @@ class olympics:
         true_dm = np.random.uniform(self.sparams.dm_min, self.sparams.dm_max)
         true_sm = np.random.uniform(self.sparams.sm_min, self.sparams.sm_max)
         true_beta = np.random.uniform(self.sparams.beta_min, self.sparams.beta_max)
-        true_width = np.random.uniform(self.sparams.width_sec_min, self.sparams.width_sec_max)
+        true_width = np.random.uniform(self.sparams.width_min, self.sparams.width_max)
     
         # Dispersion delays at DM of FRB
         true_dt_initial = dispersion_delay(true_dm, self.sparams.freq_hi_MHz)
         true_dt_final = dispersion_delay(true_dm, self.sparams.freq_lo_MHz)
 
         # Min/max allowed _undispersed_ arrival time
-        timestream_length = self.sparams.nsamples * self.sparams.dt_sec
+        timestream_length = self.sparams.nsamples * self.sparams.dt_sample
         tu_min = 0.05*timestream_length - true_dt_initial
         tu_max = 0.95*timestream_length - true_dt_final
         
@@ -398,180 +393,11 @@ def make_snr_plots(json_filename, json_obj=None):
                       xlabel = 'spectral index',
                       dedisperser_names = dedisperser_names)
 
-    if json_obj['search_params']['width_sec_min'] < json_obj['search_params']['width_sec_max']:
+    if json_obj['search_params']['width_min'] < json_obj['search_params']['width_max']:
         make_snr_plot(plot_filename = ('%s_snr_vs_width.pdf' % json_filename[:-5]),
                       xvec = [ s['true_width'] for s in json_obj['sims'] ],
                       snr_arr = snr_arr,
-                      xmin = json_obj['search_params']['width_sec_min'],
-                      xmax = json_obj['search_params']['width_sec_max'],
+                      xmin = json_obj['search_params']['width_min'],
+                      xmax = json_obj['search_params']['width_max'],
                       xlabel = 'intrinsic width [sec]',
                       dedisperser_names = dedisperser_names)
-
-
-####################################################################################################
-
-
-
-def parse_kv_file(filename):
-    """Reads key/value pairs from file, and returns a string->string dictionary."""
-    
-    ret = { }
-
-    for line in open(filename):
-        if (len(line) > 0) and (line[-1] == '\n'):
-            line = line[:-1]
-            
-        i = line.find('#')
-        if i >= 0:
-            line = line[:i]
-
-        t = line.split()
-        if len(t) == 0:
-            continue
-        if (len(t) != 3) or (t[1] != '='):
-            raise RuntimeError("%s: parse error in line '%s'" % (filename,line))
-        if ret.has_key(t[0]):
-            raise RuntimeError("%s: duplicate key '%s'" % (filename,t[0]))
-        ret[t[0]] = t[2]
-
-    return ret
-
-
-class search_params:
-    """
-    Defines instrumental specs (frequency range, sampling rate, timestream length), and parameter ranges
-    for the FRB parameters (DM, SM, spectral index).
-
-    The constructor initializes the search_params from a simple text-based file format.  For an example
-    search_params file to illustrate the format, see examples/example0_bonsai/example0_search_params.txt.
-    """
-
-    # a list of (field_name, field_type) pairs
-    all_fields = [ ('dm_min', float),
-                   ('dm_max', float),
-                   ('sm_min', float),
-                   ('sm_max', float),
-                   ('beta_min', float),
-                   ('beta_max', float),
-                   ('width_sec_min', float),
-                   ('width_sec_max', float),
-                   ('nfreq', int),
-                   ('freq_lo_MHz', float),
-                   ('freq_hi_MHz', float),
-                   ('dt_sec', float),
-                   ('nsamples', int) ]
-
-
-    def __init__(self, filename):
-        kv_pairs = parse_kv_file(filename)
-
-        for (field_name, field_type) in self.all_fields:
-            try:
-                field_value = kv_pairs.pop(field_name)
-                field_value = field_type(field_value)
-            except KeyError:
-                raise RuntimeError("%s: field '%s' not found" % (filename, field_name))
-            except ValueError:
-                raise RuntimeError("%s: parse error in field '%s' (value='%s')" % (filename, field_name, field_value))
-
-            setattr(self, field_name, field_value)
-
-        if len(kv_pairs) > 0:
-            raise RuntimeError("%s: unrecognized parameter(s) in file: %s" % (filename, ', '.join(kv_pairs.keys())))
-
-        assert self.dm_min >= 0.0, filename + ": failed assert: dm_min >= 0.0"
-        assert self.sm_min >= 0.0, filename + ": failed assert: sm_min >= 0.0"
-        assert self.width_sec_min >= 0.0, filename + ": failed assert: width_sec_min >= 0.0"
-        assert self.nsamples > 0, filename + ": failed assert: nsamples > 0"
-        assert self.nfreq > 0, filename + ": failed assert: nfreq > 0"
-
-        # The choice of ranges here is intended to guard against accidentally using the wrong units
-        # (e.g. GHz instead of MHz, millseconds instead of seconds)
-        assert self.freq_lo_MHz >= 100.0, filename + ": failed assert: freq_lo_MHz >= 100.0"
-        assert self.dt_sec >= 2.0e-6, filename + ": failed assert: dt_sec >= 2.0e-6"
-        assert self.dt_sec <= 0.01, filename + ": failed assert: dt_sec <= 0.01"
-
-        assert self.dm_min <= self.dm_max, filename + ": failed assert: dm_min <= dm_max"
-        assert self.sm_min <= self.sm_max, filename + ": failed assert: sm_min <= sm_max"
-        assert self.width_sec_min <= self.width_sec_max, filename + ": failed assert: width_sec_min <= width_sec_max"
-        assert self.freq_lo_MHz < self.freq_hi_MHz, filename + ": failed assert: freq_lo_MHz < freq_hi_MHz"
-
-        # One last, less trivial consistency test: the total timestream length must be at least 
-        # 20% larger than the max in-band dispersion delay.
-
-        timestream_length = self.nsamples * self.dt_sec
-        max_dispersion_delay = dispersion_delay(self.dm_max, self.freq_lo_MHz) - dispersion_delay(self.dm_max, self.freq_hi_MHz)
-
-        assert timestream_length > 1.2 * max_dispersion_delay, \
-            filename + ': failed assert: timestream_length > 1.2 * max_dispersion_delay'
-
-
-
-####################################################################################################
-
-
-class rerunnable_gaussian_noise_stream(rf_pipelines.wi_stream):
-    """
-    Similar to rf_pipelines.gaussian_noise_stream, but allows the stream to be rerun by saving its state:
-    
-        s = rerunnable_gaussian_noise_stream(...)
-        saved_state = s.get_state()
-           # ... run stream ...
-        s.set_state(saved_state)
-           # ... rerunning stream will give same output ...
-
-    If 'no_noise_flag' is True, then the stream will output zeroes instead of Gaussian random numbers.
-    """
-
-    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, simulate_noise=True, state=None, nt_chunk=None):
-        rf_pipelines.wi_stream.__init__(self, 'rereunnable_gaussian_noise_stream')
-
-        if nt_tot <= 0:
-            raise RuntimeError('rerunnable_gaussian_noise_stream constructor: nt_tot must be > 0')
-        if nt_chunk is None:
-            nt_chunk = min(1024, nt_tot)
-
-        # These are members of the rf_pipelines.wi_stream base class.
-        self.nfreq = nfreq
-        self.nt_chunk = nt_chunk
-
-        self.freq_lo_MHz = freq_lo_MHz
-        self.freq_hi_MHz = freq_hi_MHz
-        self.dt_sample = dt_sample
-        self.simulate_noise = simulate_noise
-        self.nt_tot = nt_tot
-        self.set_state(state)
-
-
-    def _bind_stream(self, json_attrs):
-        json_attrs['freq_lo_MHz'] = self.freq_lo_MHz
-        json_attrs['freq_hi_MHz'] = self.freq_hi_MHz
-        json_attrs['dt_sample'] = self.dt_sample
-
-
-    def _fill_chunk(self, intensity, weights, pos):
-        assert intensity.shape == weights.shape == (self.nfreq, self.nt_chunk)
-
-        if self.simulate_noise:
-            intensity[:,:] = self.state.standard_normal((self.nfreq, self.nt_chunk))
-        else:
-            intensity[:,:] = np.zeros((self.nfreq, self.nt_chunk), dtype=np.float32)
-
-        weights[:,:] = np.ones((self.nfreq, self.nt_chunk), dtype=np.float32)
-
-        return (pos + self.nt_chunk) < self.nt_tot
-        
-
-    def get_state(self):
-        """Returns the current RNG state."""
-        return copy.copy(self.state)
-
-
-    def set_state(self, state):
-        """Restores the RNG state to a previous value, obtained by calling get_state()."""
-
-        if state is None:
-            self.state = np.random.RandomState()
-        else:
-            assert isinstance(state, np.random.RandomState)
-            self.state = copy.copy(state)
