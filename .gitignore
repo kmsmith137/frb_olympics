@@ -1,6 +1,8 @@
 *~
 *.pyc
-Makefile.local
+*.egg-info
+build/
+dist/
 examples/example0_bonsai/example0_bonsai_config_n2048.hdf5
 examples/example0_bonsai/example0_bonsai_config_n4096.hdf5
 examples/example0_bonsai/example0.json

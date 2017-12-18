@@ -45,8 +45,6 @@ However, the complete list of dependencies for the above libraries reads as foll
 
 ### Installation:
 
-To install frb_olympics, just create a Makefile.local defining the variable PYDIR where rf_pipelines.py should be installed.
-(See examples in site/)  Then do 'make install'.
-
-From there, try running examples/example0_bonsai.  (The other examples are intended to run on a large cluster and are more complicated.)
-
+```
+python setup.py install --user
+```
