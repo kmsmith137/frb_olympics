@@ -340,7 +340,7 @@ def make_snr_plot(plot_filename, xvec, snr_arr, xmin, xmax, xlabel, dedisperser_
     plt.ylim(0.0, max(np.max(snr_arr),1.1))
     plt.axhline(y=1, ls=':', color='k')
     plt.xlabel(xlabel)
-    plt.ylabel('Recovered SNR')
+    plt.ylabel('Optimality')
     plt.legend(slist, dedisperser_names, scatterpoints=1, loc='lower left')
 
     print >>sys.stderr, 'writing', plot_filename
