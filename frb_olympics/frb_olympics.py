@@ -15,62 +15,6 @@ from search_params import search_params
 from rerunnable_gaussian_noise_stream import rerunnable_gaussian_noise_stream
 
 
-####################################################################################################
-#
-# MPI configuration
-
-
-is_mpi = True
-
-try:
-    import mpi4py
-except ImportError:
-    is_mpi = False
-
-
-if is_mpi:
-    import mpi4py.MPI
-    mpi_rank = mpi4py.MPI.COMM_WORLD.rank
-    mpi_size = mpi4py.MPI.COMM_WORLD.size
-    mpi_gather = lambda x: mpi4py.MPI.COMM_WORLD.gather(x, root=0)
-        
-else:
-    # Hmm, mpi4py failed to load... is this because we're a serial job, or for some other reason?
-    suspicious_vars = [ 'OMPI_COMM_WORLD_SIZE',   # openmpi-1.3
-                        'SLURM_NPROCS',           # slurm v14
-                        'PMI_SIZE' ]              # mpich 2
-
-    for x in suspicious_vars:
-        if os.environ.has_key(x):
-            print >>sys.stderr, 'Environment variable %s is set, but mpi4py failed to import.'
-            print >>sys.stderr, 'This probably means that something is wrong with the mpi4py installation.'
-            sys.exit(1)
-
-    # OK, satisfied that we're a serial job!
-    mpi_rank = 0
-    mpi_size = 1
-    mpi_gather = lambda x: [x]
-
-
-def init_mpi_log_files(stem):
-    if mpi_size == 1:
-        return
-
-    # redirect stdout, stderr to log files which are unique to this MPI rank
-
-    log_filename = '%s.stdout%d' % (stem, mpi_rank)
-    sys.stderr.write('redirecting stdout -> %s\n' % log_filename)
-    f_log = open(log_filename, 'w')
-    os.dup2(f_log.fileno(), sys.stdout.fileno())
-
-    log_filename = '%s.stderr%d' % (stem, mpi_rank)
-    sys.stderr.write('redirecting stderr -> %s\n' % log_filename)
-    f_log = open(log_filename, 'w')
-    os.dup2(f_log.fileno(), sys.stderr.fileno())
-
-
-####################################################################################################
-
 
 class olympics:
     """
@@ -158,7 +102,7 @@ class olympics:
         self.add_dedisperser(t, name)
 
 
-    def run(self, json_filename, nmc, clobber=False, mpi_log_files=True):
+    def run(self, json_filename, nmc, clobber=False):
         """Runs a set of Monte Carlo simulations."""
 
         if not json_filename.endswith('.json'):
@@ -169,52 +113,40 @@ class olympics:
 
         if nmc <= 0:
             raise RuntimeError('frb_olympics.olympics.run(): expected nmc > 0')
+
+        json_out = { 'search_params': self.sparams.jsonize(),
+                     'simulate_noise': self.simulate_noise,
+                     'snr': self.snr,
+                     'nmc': nmc,
+                     'dedisperser_names': [ ],
+                     'sims': [ ] }
         
-        if (mpi_size > 1) and mpi_log_files:
-            init_mpi_log_files(stem = json_filename[:-5])
+        for (dedisperser_name, transform) in self.dedisperser_list:
+            json_out["dedisperser_names"].append(dedisperser_name)
 
-        if mpi_rank == 0:
-            json_out = { 'search_params': self.sparams.jsonize(),
-                         'simulate_noise': self.simulate_noise,
-                         'snr': self.snr,
-                         'nmc': nmc,
-                         'dedisperser_names': [ ],
-                         'sims': [ ] }
-            
-            for (dedisperser_name, transform) in self.dedisperser_list:
-                json_out["dedisperser_names"].append(dedisperser_name)
+        if not clobber and os.path.exists(json_filename) and (os.stat(json_filename).st_size > 0):
+            for i in itertools.count():
+                filename2 = '%s.old%d.json' % (json_filename[:-5], i)
+                if not os.path.exists(filename2):
+                    print >>sys.stderr, 'renaming existing file %s -> %s' % (json_filename, filename2)
+                    os.rename(json_filename, filename2)
+                    break
 
-            if not clobber and os.path.exists(json_filename) and (os.stat(json_filename).st_size > 0):
-                for i in itertools.count():
-                    filename2 = '%s.old%d.json' % (json_filename[:-5], i)
-                    if not os.path.exists(filename2):
-                        print >>sys.stderr, 'renaming existing file %s -> %s' % (json_filename, filename2)
-                        os.rename(json_filename, filename2)
-                        break
+        verb = 'truncating' if os.path.exists(json_filename) else 'creating'
+        print >>sys.stderr, verb, 'file', json_filename
+        f_out = open(json_filename, 'w')
 
-            verb = 'truncating' if os.path.exists(json_filename) else 'creating'
-            print >>sys.stderr, verb, 'file', json_filename
-            f_out = open(json_filename, 'w')
-
-        json_sims = [ ]
-
-        for imc in xrange(mpi_rank, nmc, mpi_size):
+        for imc in xrange(nmc):
             print >>sys.stderr, 'frb_olympics: starting Monte Carlo %d/%d' % (imc, nmc)
             json_sim = self.run_one()
-            json_sims.append(json_sim)
+            json_out['sims'].append(json_sim)
 
-        json_sims = mpi_gather(json_sims)
-
-        if mpi_rank == 0:
-            for s in json_sims:
-                json_out['sims'] += s
-
-            json.dump(json_out, f_out, indent=4)
-            print >>f_out   # extra newline (cosmetic)
-            print >>sys.stderr, 'wrote', json_filename
-
-            # make_snr_plots() is defined later in this file
-            make_snr_plots(json_filename, json_out)
+        json.dump(json_out, f_out, indent=4)
+        print >>f_out   # extra newline (cosmetic)
+        print >>sys.stderr, 'wrote', json_filename
+        
+        # make_snr_plots() is defined later in this file
+        make_snr_plots(json_filename, json_out)
 
 
     def run_one(self):
