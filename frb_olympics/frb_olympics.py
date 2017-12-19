@@ -3,6 +3,7 @@ import sys
 import copy
 import json
 import itertools
+import importlib
 import numpy as np
 
 import matplotlib; matplotlib.use('Agg')
@@ -131,6 +132,53 @@ class search_params:
             raise RuntimeError("%s: couldn't parse json file" % filename)
         
         return search_params.from_json(j, filename)
+
+
+####################################################################################################
+
+
+class dedisperser_base:
+    def init_search_params(self, sp):
+        """
+        The 'sp' argument is an object of type search_params.
+        """
+        raise RuntimeError("frb_olympics.dedisperser_base.init_search_params() was not overloaded by subclass %s" % self.__class__.__name__)
+
+
+    def allocate(self):
+        pass
+
+
+    def dedisperse(self, arr):
+        """
+        The 'arr' argument is a float32 array of shape (nfreq, nsamples).
+        """
+        raise RuntimeError("frb_olympics.dedisperser_base.dedisperse() was not overloaded by subclass %s" % self.__class__.__name__)
+
+    def deallocate(self):
+        pass
+
+
+    @staticmethod
+    def from_json(j, filename=None):
+        f = filename if (filename is not None) else 'frb_olympics.dedisperser_base.from_json()' 
+        
+        try:
+            m = importlib.import_module(j['module_name'])
+        except ImportError:
+            raise ImportError("%s: couldn't import module %s" % (f, j['module_name']))
+                              
+        c = getattr(m, j['class_name'], None)
+
+        if c is None:
+            raise RuntimeError("%s: couldn't find class '%s' in module '%s" % (f, j['class_name'], j['module_name']))
+        if not issubclass(c, dedisperser_base):
+            raise RuntimeError("%s: expected class %s.%s to be a subclass of frb_olympics.dedisperser_base" % (f, j['module_name'], j['class_name']))
+        if c.from_json == dedisperser_base.from_json:
+            raise RuntimeError("%s: expected class %s.%s to override dedisperser_base.from_json()" % (f, j['module_name'], j['class_name']))
+
+        f = filename if (filename is not None) else ('%s.%s.from_json()' % (j['module_name'], j['class_name']))
+        return c.from_json(j, f)
 
 
 ####################################################################################################
