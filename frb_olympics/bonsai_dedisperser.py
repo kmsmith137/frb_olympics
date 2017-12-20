@@ -1,34 +1,36 @@
 import os
 import numpy as np
 
-from .frb_olympics import search_params, dedisperser_base
+import frb_olympics
 
 
-class bonsai_dedisperser(dedisperser_base):
-    def __init__(self, config_filename):
-        name = os.path.basename(config_filename)
-        name = name.split('.')[0]
-        dedisperser_base.__init__(self, name)
+class bonsai_dedisperser(frb_olympics.dedisperser_base):
+    def __init__(self, config, name=None):
+        """
+        The 'config' argument can be either a dictionary or a filename.
+        """
 
         try:
             import bonsai
         except:
             raise ImportError("frb_olympics: couldn't import 'bonsai'.  You may need to install it from https://github.com/CHIMEFRB/ch_frb_io.")
 
-        self.config_filename = os.path.abspath(config_filename)
+        if name is None:
+            name = config if isinstance(config, basename) else 'bonsai_dedisperser'
+            name = os.path.basename(name)
+            name = name.split('.')[0]
         
-        self.dedisperser = bonsai.Dedisperser(config_filename,
-                                              fill_rfi_mask = False,
-                                              allocate = False,
-                                              use_analytic_normalization = True)
+        frb_olympics.dedisperser_base.__init__(name)
+
+        self.dedisperser = bonsai.Dedisperser(config, fill_rfi_mask=False, allocate=False, use_analytic_normalization=True)
 
 
-    def init_search_params(self, sp):
+    def init_search_params(self, search_params):
         if hasattr(self, 'search_params'):
             raise RuntimeError('double call to frb_olympics.bonsai_dedisperser.init_search_params()')
 
         # Lots of sanity checks
-        assert isinstance(sp, search_params)
+        assert isinstance(sp, frb_olympics.search_params)
         assert sp.nfreq == self.dedisperser.nfreq
         assert sp.dm_max <= np.max(self.dedisperser.max_dm)
         assert abs(sp.freq_lo_MHz - self.dedisperser.freq_lo_MHz) < 1.0e-3
@@ -76,13 +78,16 @@ class bonsai_dedisperser(dedisperser_base):
 
 
     def jsonize(self):
-        return {
-            'module_name': self.__module__,
-            'class_name': self.__class__.__name__,
-            'config_filename': self.config_filename
-        }
+        return self.dedisperser.config
 
 
     @staticmethod
-    def from_json(j, json_filename):
-        return bonsai_dedisperser(j['config_filename'])
+    def from_json(j, filename=None):
+        (j, filename) = frb_olympics._from_json_helper(j, filename, 'bonsai_dedisperser.from_json()')
+
+        j = copy.copy(j)
+        j.pop('module_name')
+        j.pop('class_name')
+
+        name = j.pop('name', filename)
+        return bonsai_dedispeser(j, name)

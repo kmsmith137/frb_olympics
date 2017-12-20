@@ -17,6 +17,25 @@ def dispersion_delay(dm, freq_MHz):
     return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
 
+def _from_json_helper(j, filename, caller_name):
+    if isinstance(j, basestring):
+        # Interpret as filename
+        filename = j
+        f = open(j)
+    
+        try:
+            j = json.load(f)
+        except:
+            raise RuntimeError("%s: couldn't parse json file" % filename)
+
+    if filename is None:
+        filename = caller_name
+    if not isinstance(j, dict):
+        raise RuntimeError('%s: expected dict, got %s' % (filename, j.__class__.__name__))
+
+    return (j, filename)
+
+
 ####################################################################################################
 
 
@@ -104,10 +123,7 @@ class search_params:
     
     @staticmethod
     def from_json(j, filename=None):
-        if filename is None:
-            filename = 'frb_olympics.search_params.from_json()'
-        if not isinstance(j, dict):
-            raise RuntimeError('%s: expected dict, got %s' % (filename, j.__class__.__name__))
+        (j, filename) = _from_json_helper(j, filename, 'frb_olympics.search_params.from_json()')
 
         required_keys = set(['nfreq', 'freq_lo_MHz', 'freq_hi_MHz', 'nsamples', 'dt_sample', 'dm_max'])
         optional_keys = set(['dm_min', 'sm_min', 'sm_max', 'spectral_index_min', 'spectral_index_max', 'intrinsic_width_min', 'intrinsic_width_max', 'snr_min', 'snr_max' ])
@@ -125,18 +141,6 @@ class search_params:
         jj['filename'] = filename
         
         return search_params(**jj)
-
-    
-    @staticmethod
-    def from_filename(filename):
-        f = open(filename)
-
-        try:
-            j = json.load(f)
-        except:
-            raise RuntimeError("%s: couldn't parse json file" % filename)
-        
-        return search_params.from_json(j, filename)
 
 
 ####################################################################################################
@@ -175,23 +179,22 @@ class dedisperser_base:
 
     @staticmethod
     def from_json(j, filename=None):
-        f = filename if (filename is not None) else 'frb_olympics.dedisperser_base.from_json()' 
+        (j, filename) = _from_json_helper(j, filename, 'frb_olympics.search_params.from_json()')
         
         try:
             m = importlib.import_module(j['module_name'])
         except ImportError:
-            raise ImportError("%s: couldn't import module %s" % (f, j['module_name']))
+            raise ImportError("%s: couldn't import module %s" % (filename, j['module_name']))
                               
         c = getattr(m, j['class_name'], None)
 
         if c is None:
-            raise RuntimeError("%s: couldn't find class '%s' in module '%s" % (f, j['class_name'], j['module_name']))
+            raise RuntimeError("%s: couldn't find class '%s' in module '%s" % (filename, j['class_name'], j['module_name']))
         if not issubclass(c, dedisperser_base):
-            raise RuntimeError("%s: expected class %s.%s to be a subclass of frb_olympics.dedisperser_base" % (f, j['module_name'], j['class_name']))
+            raise RuntimeError("%s: expected class %s.%s to be a subclass of frb_olympics.dedisperser_base" % (filename, j['module_name'], j['class_name']))
         if c.from_json == dedisperser_base.from_json:
-            raise RuntimeError("%s: expected class %s.%s to override dedisperser_base.from_json()" % (f, j['module_name'], j['class_name']))
+            raise RuntimeError("%s: expected class %s.%s to override dedisperser_base.from_json()" % (filename, j['module_name'], j['class_name']))
 
-        f = filename if (filename is not None) else ('%s.%s.from_json()' % (j['module_name'], j['class_name']))
         return c.from_json(j, f)
 
 
@@ -353,21 +356,6 @@ class comparison:
             d.deallocate()
 
 
-    def jsonize(self):
-        return {
-            'search_params': self.search_params.jsonize(),
-            'dedisperser_list': self.dedisperser_json,
-            'sims': self.sim_json
-        }
-
-
-    @staticmethod
-    def from_json(j):
-        sp = search_params.from_json(j['search_params'])
-        dlist = [ dedisperser_base.from_json(j) for j in j['dedisperser_list'] ]
-        return comparison(sp, dlist)
-
-
     def make_snr_plot(self, plot_filename, xaxis_param, xaxis_label, legend_labels = None):
         if len(self.sim_json) <= 1:
             print '%s: no plot written, not enough sims' % plot_filename
@@ -439,3 +427,23 @@ class comparison:
         for (xaxis_param, xaxis_label) in todo:
             plot_filename = '%s_snr_vs_%s.pdf' % (plot_filename_stem, xaxis_param)
             self.make_snr_plot(plot_filename, xaxis_param, xaxis_label, legend_labels)
+
+
+    def jsonize(self):
+        return {
+            'search_params': self.search_params.jsonize(),
+            'dedisperser_list': self.dedisperser_json,
+            'sims': self.sim_json
+        }
+
+
+    @staticmethod
+    def from_json(j, filename=None):
+        (j, filename) = _from_json_helper(j, filename, 'frb_olympics.comparison.from_json()')
+
+        sp = search_params.from_json(j['search_params'])
+        dlist = [ dedisperser_base.from_json(j) for j in j['dedisperser_list'] ]
+
+        ret = comparison(cp, dlist)
+        ret.sim_json = j['sims']
+        return ret

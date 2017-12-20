@@ -1,0 +1,90 @@
+#!/usr/bin/env python
+
+import sys
+import argparse
+
+
+class MyParser(argparse.ArgumentParser):
+    def print_usage(self, file=None):
+        if file is None:
+            file = sys.stdout
+
+        print >>file, 'Usage: run-frb-olympics [-o RUN_NAME] <search_params.json> <dedisperser1.json> ... <dedisperserN.json> <num_sims>'
+        print >>file, '    -o: required, used to generate output filenames RUN_NAME.json, RUN_NAME_XXX.pdf'
+        print >>file, '    -h: show longer help message and exit'
+
+
+    def error(self, message=None):
+        self.print_usage(sys.stderr)
+
+        if message is not None:
+            print >>sys.stderr, '\nError:', message
+
+        sys.exit(2)
+
+    
+    def print_help(self, file=None):
+        self.print_usage(file)
+        print >>file
+        print >>file, "For examples of the search_params.json and dedisperser.json file formats,"
+        print >>file, "see example frb_olympics runs in the examples/ directory"
+
+
+parser = MyParser()
+
+parser.add_argument('sp_filename')
+parser.add_argument('dedisperser_filenames', nargs='+')
+parser.add_argument('-n', dest='num_sims', type=int)
+parser.add_argument('-o', dest='run_name')
+
+args = parser.parse_args()
+
+if args.run_name is None:
+    parser.error('the -o argument is required')
+if args.num_sims is None:
+    parser.error('the -n argument is required')
+if args.num_sims <= 0:
+    parser.error('num_sims must be > 0')
+
+
+####################################################################################################
+
+
+import os
+import json
+import frb_olympics
+
+
+def is_well_formed_outfile(filename):
+    try:
+        j = json.load(open(filename))
+        assert set(j.keys()) == set(['search_params', 'dedisperser_list', 'sims'])
+        return True
+    finally:
+        return False
+
+
+json_outfile = args.run_name + '.json'
+
+if os.path.exists(json_outfile):
+    if is_well_formed_outfile(json_outfile):
+        print 'Note: outfile %s already exists from previous run, and will be overwritten' % json_outfile
+    else:
+        print "Error: %s already exists, and does not appear to be an frb_olympics outfile." % json_outfile
+        print "This is treated as an error.  If the file isn't important, you can delete it"
+        print "by hand and rerun 'run-frb-olympics'."
+        sys.exit(1)
+
+
+search_params = frb_olympics.search_params(args.sp_filename)
+dedisperser_list = [ frb_olympics.dedisperser_base.from_json(d) for d in args.dedisperser_filenames ]
+
+c = frb_olympics.comparison(search_params, dedisperser_list)
+
+for i in xrange(args.nmc):
+    c.run(1)
+
+json.dump(c.jsonize(), open(json_outfile,'w'), indent=4)
+print 'wrote', json_outfile
+
+c.make_snr_plots(args.run_name)
