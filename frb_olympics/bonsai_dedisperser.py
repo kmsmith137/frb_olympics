@@ -6,6 +6,10 @@ from .frb_olympics import search_params, dedisperser_base
 
 class bonsai_dedisperser(dedisperser_base):
     def __init__(self, config_filename):
+        name = os.path.basename(config_filename)
+        name = name.split('.')[0]
+        dedisperser_base.__init__(self, name)
+
         try:
             import bonsai
         except:
@@ -20,10 +24,11 @@ class bonsai_dedisperser(dedisperser_base):
 
 
     def init_search_params(self, sp):
-        assert isinstance(sp, search_params)
-        self.search_params = sp
+        if hasattr(self, 'search_params'):
+            raise RuntimeError('double call to frb_olympics.bonsai_dedisperser.init_search_params()')
 
         # Lots of sanity checks
+        assert isinstance(sp, search_params)
         assert sp.nfreq == self.dedisperser.nfreq
         assert sp.dm_max <= np.max(self.dedisperser.max_dm)
         assert abs(sp.freq_lo_MHz - self.dedisperser.freq_lo_MHz) < 1.0e-3
@@ -31,6 +36,8 @@ class bonsai_dedisperser(dedisperser_base):
         assert abs(sp.dt_sample - self.dedisperser.dt_sample) < 1.0e-7
 
         import bonsai
+
+        self.search_params = sp
         self.global_max_tracker = bonsai.global_max_tracker(sp.dm_min, sp.dm_max)
         self.dedisperser.add_processor(self.global_max_tracker)
 
@@ -61,7 +68,7 @@ class bonsai_dedisperser(dedisperser_base):
 
         return { 'snr': self.global_max_tracker.global_max_trigger,
                  'dm': self.global_max_tracker.global_max_trigger_dm,
-                 'tf': self.global_max_tracker.global_max_trigger_arrival_time }
+                 'tfin': self.global_max_tracker.global_max_trigger_arrival_time }
 
 
     def deallocate(self):

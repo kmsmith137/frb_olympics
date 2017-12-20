@@ -2,14 +2,13 @@ import os
 import sys
 import copy
 import json
-import itertools
 import importlib
-import numpy as np
 
+import numpy as np
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-import rf_pipelines
+import simpulse
 
 
 # Note: cut-and-paste from "simpulse"
@@ -32,8 +31,8 @@ class search_params:
     """
 
     def __init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, nsamples, dt_sample, dm_max,
-                 dm_min=0.0, sm_min=0.0, sm_max=0.0, beta_min=0.0, beta_max=0.0,
-                 width_min=0.0, width_max=0.0, filename=None):
+                 dm_min=0.0, sm_min=0.0, sm_max=0.0, spectral_index_min=0.0, spectral_index_max=0.0,
+                 intrinsic_width_min=0.0, intrinsic_width_max=0.0, snr_min=20.0, snr_max=20.0, filename=None):
 
         self.nfreq = nfreq
         self.freq_lo_MHz = freq_lo_MHz
@@ -44,10 +43,12 @@ class search_params:
         self.dm_max = dm_max
         self.sm_min = sm_min
         self.sm_max = sm_max
-        self.beta_min = beta_min
-        self.beta_max = beta_max
-        self.width_min = width_min
-        self.width_max = width_max
+        self.spectral_index_min = spectral_index_min
+        self.spectral_index_max = spectral_index_max
+        self.intrinsic_width_min = intrinsic_width_min
+        self.intrinsic_width_max = intrinsic_width_max
+        self.snr_min = snr_min
+        self.snr_max = snr_max
 
         # Argument checking follows.
         
@@ -56,7 +57,7 @@ class search_params:
 
         assert self.dm_min >= 0.0, filename + ": failed assert: dm_min >= 0.0"
         assert self.sm_min >= 0.0, filename + ": failed assert: sm_min >= 0.0"
-        assert self.width_min >= 0.0, filename + ": failed assert: width_min >= 0.0"
+        assert self.intrinsic_width_min >= 0.0, filename + ": failed assert: intrinsic_width_min >= 0.0"
         assert self.nsamples > 0, filename + ": failed assert: nsamples > 0"
         assert self.nfreq > 0, filename + ": failed assert: nfreq > 0"
 
@@ -68,8 +69,10 @@ class search_params:
 
         assert self.dm_min <= self.dm_max, filename + ": failed assert: dm_min <= dm_max"
         assert self.sm_min <= self.sm_max, filename + ": failed assert: sm_min <= sm_max"
-        assert self.width_min <= self.width_max, filename + ": failed assert: width_min <= width_max"
+        assert self.intrinsic_width_min <= self.intrinsic_width_max, filename + ": failed assert: intrinsic_width_min <= intrinsic_width_max"
         assert self.freq_lo_MHz < self.freq_hi_MHz, filename + ": failed assert: freq_lo_MHz < freq_hi_MHz"
+        assert self.snr_min <= self.snr_max, ": failed assert: snr_min <= snr_max"
+        assert self.snr_min > 0, ": failed assert: snr_min > 0"
 
         # One last, less trivial consistency test: the total timestream length must be at least 
         # 20% larger than the max in-band dispersion delay.
@@ -91,10 +94,12 @@ class search_params:
                  'dm_max': self.dm_max,
                  'sm_min': self.sm_min,
                  'sm_max': self.sm_max,
-                 'beta_min': self.beta_min,
-                 'beta_max': self.beta_max,
-                 'width_min': self.width_min,
-                 'width_max': self.width_max }
+                 'spectral_index_min': self.spectral_index_min,
+                 'spectral_index_max': self.spectral_index_max,
+                 'intrinsic_width_min': self.intrinsic_width_min,
+                 'intrinsic_width_max': self.intrinsic_width_max,
+                 'snr_min': self.snr_min,
+                 'snr_max': self.snr_max }
 
     
     @staticmethod
@@ -105,7 +110,7 @@ class search_params:
             raise RuntimeError('%s: expected dict, got %s' % (filename, j.__class__.__name__))
 
         required_keys = set(['nfreq', 'freq_lo_MHz', 'freq_hi_MHz', 'nsamples', 'dt_sample', 'dm_max'])
-        optional_keys = set(['dm_min', 'sm_min', 'sm_max', 'beta_min', 'beta_max', 'width_min', 'width_max'])
+        optional_keys = set(['dm_min', 'sm_min', 'sm_max', 'spectral_index_min', 'spectral_index_max', 'intrinsic_width_min', 'intrinsic_width_max', 'snr_min', 'snr_max' ])
         specified_keys = set([ str(x) for x in j.keys() ])
         
         missing_keys = required_keys.difference(specified_keys)
@@ -138,6 +143,10 @@ class search_params:
 
 
 class dedisperser_base:
+    def __init__(self, name):
+        self.name = name
+
+
     def init_search_params(self, sp):
         """
         The 'sp' argument is an object of type search_params.
@@ -155,8 +164,13 @@ class dedisperser_base:
         """
         raise RuntimeError("frb_olympics.dedisperser_base.dedisperse() was not overloaded by subclass %s" % self.__class__.__name__)
 
+
     def deallocate(self):
         pass
+
+    
+    def jsonize(self):
+        raise RuntimeError("frb_olympics.dedisperser_base.jsonize() was not overloaded by subclass %s" % self.__class__.__name__)
 
 
     @staticmethod
@@ -184,390 +198,244 @@ class dedisperser_base:
 ####################################################################################################
 
 
-class olympics:
-    """
-    This is the class used to maintain state for an FRB olympics run.
-    See examples/example0_bonsai/run-example0.py for an example of how to use it.
-    """
+class comparison:
+    def __init__(self, sp, dedisperser_list):
+        assert isinstance(sp, search_params)
+        assert len(dedisperser_list) > 0
+
+        self.search_params = sp
+        self.dedisperser_list = dedisperser_list
+        self.dedisperser_json = [ ]
+        self.sim_json = [ ]
+
+        for d in dedisperser_list:
+            assert isinstance(d, dedisperser_base)
+            assert hasattr(d, 'name')
+
+            j = d.jsonize()
+
+            if not isinstance(j, dict):
+                raise RuntimeError("expected %s.jsonize() to return dict (returned %s)" % (p.__class__.__name__, j.__class__.__name__))
+
+            j['module_name'] = d.__module__
+            j['class_name'] = d.__class__.__name__
+            j['name'] = d.name
+
+            self.dedisperser_json.append(j)
+            d.init_search_params(sp)
+
+
+    def run(self, nmc, noisy=True):
+        nfreq = self.search_params.nfreq
+        nsamples = self.search_params.nsamples
+        freq_lo_MHz = self.search_params.freq_lo_MHz
+        freq_hi_MHz = self.search_params.freq_hi_MHz
+        dm_max = self.search_params.dm_max
+
+        nmc_in = len(self.sim_json)
+        intensity = np.zeros((nfreq, nsamples), dtype=np.float32)
+
+        timestream_length = nsamples * self.search_params.dt_sample
+        max_dispersion_delay = dispersion_delay(dm_max, freq_lo_MHz) - dispersion_delay(dm_max, freq_hi_MHz)
+        noise_seeds = [ ]
+
+        for (id,d) in enumerate(self.dedisperser_list):
+            d.allocate()
+
+            for imc in xrange(nmc):
+                if noisy:
+                    print 'frb_olympics: dedisperser %d/%d (%s), simulation %d' % (id+1, len(self.dedisperser_list), d.name, nmc_in+imc+1)
+
+                if id == 0:
+                    # Simulate random FRB params.
+                    true_params = {
+                        'dm': np.random.uniform(self.search_params.dm_min, self.search_params.dm_max),
+                        'sm': np.random.uniform(self.search_params.sm_min, self.search_params.sm_max),
+                        'spectral_index': np.random.uniform(self.search_params.spectral_index_min, self.search_params.spectral_index_max),
+                        'intrinsic_width': np.random.uniform(self.search_params.intrinsic_width_min, self.search_params.intrinsic_width_max),
+                        'snr': np.random.uniform(self.search_params.snr_min, self.search_params.snr_max),
+                        'tmid': np.random.uniform(0.51 * max_dispersion_delay, timestream_length - 0.51 * max_dispersion_delay)
+                    }
+
+                    this_sim = {
+                        'true_params': true_params,
+                        'recovered_params': [ ]    # this list will be populated by the dedispersers
+                    }
 
-    def __init__(self, sparams, snr=30.0, simulate_noise=True):
-        """
-        The 'sparams' arg should either be an object of class search_params (see below for definition)
-        or a string, assumed to be a search_params filename.
+                    # Save FRB params and RNG state
+                    self.sim_json.append(this_sim)
+                    noise_seeds.append(np.random.get_state())
+
+                else:
+                    # Use same random FRB params and RNG state as previous simulation.
+                    true_params = self.sim_json[nmc_in + imc]['true_params']
+                    np.random.set_state(noise_seeds[imc])
 
-        The 'snr' arg is the signal-to-noise of the FRB, assuming unit variance.
-        """
-
-        self.simulate_noise = simulate_noise
-        self.snr = snr
+                # Simulate Gaussian random noise.  There is no float32 gaussian random number generator in numpy, 
+                # so we simulate in float64 and down-convert.  We do this in slices to save memory!
 
-        if isinstance(sparams, search_params):
-            self.sparams = sparams
-        elif isinstance(sparams, basestring):
-            # if 'sparams' is a string, then assume it's the filename
-            self.sparams = search_params.from_filename(sparams)
-        else:
-            raise RuntimeError("frb_olympics.olympics constructor: expected 'sparams' argument to be either a string or an object of class frb_olympics.search_params")
-
-        self.stream = rerunnable_gaussian_noise_stream(nfreq = self.sparams.nfreq, 
-                                                       nt_tot = self.sparams.nsamples, 
-                                                       freq_lo_MHz = self.sparams.freq_lo_MHz, 
-                                                       freq_hi_MHz = self.sparams.freq_hi_MHz, 
-                                                       dt_sample = self.sparams.dt_sample,
-                                                       simulate_noise = simulate_noise)
-
-
-        # The dedisperser_list is a list of (name, transform) pairs
-        # where the 'transform' is an object of class rf_pipelines.pipeline_object.
-        self.dedisperser_list = [ ]
-
-
-    def add_dedisperser(self, transform, name=None):
-        """Adds a dedisperser (represented by 'transform', an object of class rf_pipelines.pipeline_object) to the dedisperser_list."""
-
-        assert isinstance(transform, rf_pipelines.pipeline_object)
-
-        if name is None:
-            name = transform.name
-
-        self.dedisperser_list.append((name, transform))
-
-
-    def add_bonsai(self, config_filename, name=None, use_analytic_normalization=True, dm_min=None, dm_max=None):
-        """Adds a bonsai_dedisperser to the dedisperser_list."""
- 
-        t = rf_pipelines.bonsai_dedisperser(config_filename, 
-                                            fill_rfi_mask = False, 
-                                            track_global_max = True, 
-                                            use_analytic_normalization = use_analytic_normalization,
-                                            dm_min = dm_min,
-                                            dm_max = dm_max)
-
-        self.add_dedisperser(t, name)
-
-
-    def add_bb_dedisperser(self, dm_tol, dm_t0, name=None, verbosity=1):
-        """Adds a bb_dedisperser to the dedisperser_list."""
-
-        t = rf_pipelines.bb_dedisperser(dm_start = self.sparams.dm_min,
-                                        dm_end = self.sparams.dm_max,
-                                        dm_tol = dm_tol,
-                                        dm_t0 = dm_t0,
-                                        scrunch = False,
-                                        sc_tol = 1.15,
-                                        sc_t0 = 0.0,
-                                        nt_in = self.sparams.nsamples,
-                                        verbosity = verbosity)
-
-        self.add_dedisperser(t, name)
-
-
-    def add_bz_fdmt(self, name='FDMT'):
-        """Adds an FDMT dedisperser to the dedisperser_list."""
-
-        # No free parameters!
-        t = rf_pipelines.bz_fdmt_dedisperser(self.sparams.dm_max, self.sparams.nsamples)
-        self.add_dedisperser(t, name)
-
-
-    def run(self, json_filename, nmc, clobber=False):
-        """Runs a set of Monte Carlo simulations."""
-
-        if not json_filename.endswith('.json'):
-            raise RuntimeError("frb_olympics.olympics.run(): 'json_filename' argument must end in .json")
-        
-        if len(self.dedisperser_list) == 0:
-            raise RuntimeError('frb_olympics.olympics.run(): no dedispersers were defined')
-
-        if nmc <= 0:
-            raise RuntimeError('frb_olympics.olympics.run(): expected nmc > 0')
-
-        json_out = { 'search_params': self.sparams.jsonize(),
-                     'simulate_noise': self.simulate_noise,
-                     'snr': self.snr,
-                     'nmc': nmc,
-                     'dedisperser_names': [ ],
-                     'sims': [ ] }
-        
-        for (dedisperser_name, transform) in self.dedisperser_list:
-            json_out["dedisperser_names"].append(dedisperser_name)
-
-        if not clobber and os.path.exists(json_filename) and (os.stat(json_filename).st_size > 0):
-            for i in itertools.count():
-                filename2 = '%s.old%d.json' % (json_filename[:-5], i)
-                if not os.path.exists(filename2):
-                    print >>sys.stderr, 'renaming existing file %s -> %s' % (json_filename, filename2)
-                    os.rename(json_filename, filename2)
-                    break
-
-        verb = 'truncating' if os.path.exists(json_filename) else 'creating'
-        print >>sys.stderr, verb, 'file', json_filename
-        f_out = open(json_filename, 'w')
-
-        for imc in xrange(nmc):
-            print >>sys.stderr, 'frb_olympics: starting Monte Carlo %d/%d' % (imc, nmc)
-            json_sim = self.run_one()
-            json_out['sims'].append(json_sim)
-
-        json.dump(json_out, f_out, indent=4)
-        print >>f_out   # extra newline (cosmetic)
-        print >>sys.stderr, 'wrote', json_filename
-        
-        # make_snr_plots() is defined later in this file
-        make_snr_plots(json_filename, json_out)
-
-
-    def run_one(self):
-        """Runs a single Monte Carlo simulation (helper function called by run())."""
-        
-        if len(self.dedisperser_list) == 0:
-            raise RuntimeError('frb_olympics.olympics.run_one(): no dedispersers were defined')
-
-        # Generate random FRB params
-        true_dm = np.random.uniform(self.sparams.dm_min, self.sparams.dm_max)
-        true_sm = np.random.uniform(self.sparams.sm_min, self.sparams.sm_max)
-        true_beta = np.random.uniform(self.sparams.beta_min, self.sparams.beta_max)
-        true_width = np.random.uniform(self.sparams.width_min, self.sparams.width_max)
-    
-        # Dispersion delays at DM of FRB
-        true_dt_initial = dispersion_delay(true_dm, self.sparams.freq_hi_MHz)
-        true_dt_final = dispersion_delay(true_dm, self.sparams.freq_lo_MHz)
-
-        # Min/max allowed _undispersed_ arrival time
-        timestream_length = self.sparams.nsamples * self.sparams.dt_sample
-        tu_min = 0.05*timestream_length - true_dt_initial
-        tu_max = 0.95*timestream_length - true_dt_final
-        
-        assert tu_min < tu_max
-        true_tu = np.random.uniform(tu_min, tu_max);
-
-        # Convert undispersed arrival time to central arrival time.
-        true_tc = true_tu + (true_dt_initial + true_dt_final) / 2.
-        
-        t_frb = rf_pipelines.frb_injector_transform(snr = self.snr,
-                                                    undispersed_arrival_time = true_tu,
-                                                    dm = true_dm,
-                                                    variance = 1.0,
-                                                    intrinsic_width = true_width,
-                                                    sm = true_sm,
-                                                    spectral_index = true_beta)
-
-        # Start building up output
-        json_output = { 'true_snr': self.snr,
-                        'true_dm': true_dm,
-                        'true_sm': true_sm,
-                        'true_beta': true_beta,
-                        'true_width': true_width,
-                        'true_tcentral': true_tc,
-                        'search_results': [ ] }
-
-        # We save the RNG state and restore it below, so that each dedisperser "sees" the same
-        # noise realization.  At the end of run_one(), the RNG state has been advanced, so that
-        # subsequent calls to run_one() will produce a different noise realization.
-        saved_state = self.stream.get_state()
-
-        for (name, dedisperser) in self.dedisperser_list:
-            print >>sys.stderr, 'frb_olympics: running dedisperser', name
-            self.stream.set_state(saved_state)
-
-            p = rf_pipelines.pipeline([self.stream, t_frb, dedisperser])
-            pipeline_json = p.run(outdir=None)
-            p.unbind()
-            
-            # We're only interested in the part of the json output from the last transform (the dedisperser).
-            pipeline_json = pipeline_json['pipeline'][-1]
-
-            if not pipeline_json.has_key('frb_global_max_trigger'):
-                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger' field")
-            if not pipeline_json.has_key('frb_global_max_trigger_dm'):
-                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_dm' field")
-        
-            recovered_snr = pipeline_json['frb_global_max_trigger']
-            recovered_dm = pipeline_json['frb_global_max_trigger_dm']
-            
-            recovered_dt_initial = dispersion_delay(recovered_dm, self.sparams.freq_hi_MHz)
-            recovered_dt_final = dispersion_delay(recovered_dm, self.sparams.freq_lo_MHz)
-
-            if pipeline_json.has_key('frb_global_max_trigger_tcentral'):
-                recovered_tc = pipeline_json['frb_global_max_trigger_tcentral']
-            elif pipeline_json.has_key('frb_global_max_trigger_tinitial'):
-                recovered_tc = pipeline_json['frb_global_max_trigger_tinitial'] + (recovered_dt_final - recovered_dt_initial) / 2.0
-            elif pipeline_json.has_key('frb_global_max_trigger_tfinal'):
-                recovered_tc = pipeline_json['frb_global_max_trigger_tfinal'] - (recovered_dt_final - recovered_dt_initial) / 2.0
-            elif pipeline_json.has_key('frb_global_max_trigger_final'):
-                recovered_tc = pipeline_json['frb_global_max_trigger_tundisp'] - (recovered_dt_initial + recovered_dt_final) / 2.0
-            else:
-                raise RuntimeError("internal error: dedisperser transform didn't output 'frb_global_max_trigger_t*' field")
-
-            print >>sys.stderr, 'frb_olympics: dedisperser=%s, recovered snr=%s' % (name, recovered_snr)
-
-            search_results_json = { 'recovered_snr': recovered_snr,
-                                    'recovered_dm': recovered_dm,
-                                    'recovered_tcentral': recovered_tc }
-
-            json_output['search_results'].append(search_results_json)
-            
-        return json_output
-
-
-####################################################################################################
-
-
-def make_snr_plot(plot_filename, xvec, snr_arr, xmin, xmax, xlabel, dedisperser_names):
-    """Helper function called by make_snr_plots()."""
-
-    color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c' ]
-
-    xvec = np.array(xvec)
-    nds = len(dedisperser_names)
-    nmc = len(xvec)
-
-    assert xvec.ndim == 1
-    assert nds <= len(color_list)
-    assert snr_arr.shape == (nmc, nds)
-    assert np.all(snr_arr >= 0.0)
-
-    slist = [ ]
-    for ids in xrange(nds):
-        slist.append(plt.scatter(xvec, snr_arr[:,ids], s=5, color=color_list[ids], marker='o'))
-
-    plt.xlim(xmin, xmax)
-    plt.ylim(0.0, max(np.max(snr_arr),1.1))
-    plt.axhline(y=1, ls=':', color='k')
-    plt.xlabel(xlabel)
-    plt.ylabel('Optimality')
-    plt.legend(slist, dedisperser_names, scatterpoints=1, loc='lower left')
-
-    print >>sys.stderr, 'writing', plot_filename
-    plt.savefig(plot_filename)
-    plt.clf()
-    
-
-def make_snr_plots(json_filename, json_obj=None):
-    """
-    Makes plots of snr versus dm.  Also makes plots of snr versus sm/beta/width (if these parameters span a nonzero range).
-    This routine can be called to generate plots directly from a json file.
-    """
-
-    if not json_filename.endswith('.json'):
-        raise RuntimeError("frb_olympics.make_snr_plots(): 'json_filename' argument must end in .json")
-
-    if json_obj is None:
-        print >>sys.stderr, 'reading', json_filename
-        json_obj = json.load(open(json_filename))
-
-    dedisperser_names = json_obj["dedisperser_names"];
-    nmc = json_obj["nmc"]
-    nds = len(dedisperser_names)
-
-    snr_arr = np.zeros((nmc,nds))
-    for imc in xrange(nmc):
-        true_snr = json_obj['sims'][imc]['true_snr']
-        for ids in xrange(nds):
-            recovered_snr = json_obj['sims'][imc]['search_results'][ids]['recovered_snr']
-            snr_arr[imc,ids] = recovered_snr / true_snr
-
-    make_snr_plot(plot_filename = ('%s_snr_vs_dm.pdf' % json_filename[:-5]),
-                  xvec = [ s['true_dm'] for s in json_obj['sims'] ],
-                  snr_arr = snr_arr,
-                  xmin = json_obj['search_params']['dm_min'],
-                  xmax = json_obj['search_params']['dm_max'],
-                  xlabel = 'DM',
-                  dedisperser_names = dedisperser_names)
-
-    if json_obj['search_params']['sm_min'] < json_obj['search_params']['sm_max']:
-        make_snr_plot(plot_filename = ('%s_snr_vs_sm.pdf' % json_filename[:-5]),
-                      xvec = [ s['true_sm'] for s in json_obj['sims'] ],
-                      snr_arr = snr_arr,
-                      xmin = json_obj['search_params']['sm_min'],
-                      xmax = json_obj['search_params']['sm_max'],
-                      xlabel = 'SM',
-                      dedisperser_names = dedisperser_names)
-
-    if json_obj['search_params']['beta_min'] < json_obj['search_params']['beta_max']:
-        make_snr_plot(plot_filename = ('%s_snr_vs_beta.pdf' % json_filename[:-5]),
-                      xvec = [ s['true_beta'] for s in json_obj['sims'] ],
-                      snr_arr = snr_arr,
-                      xmin = json_obj['search_params']['beta_min'],
-                      xmax = json_obj['search_params']['beta_max'],
-                      xlabel = 'spectral index',
-                      dedisperser_names = dedisperser_names)
-
-    if json_obj['search_params']['width_min'] < json_obj['search_params']['width_max']:
-        make_snr_plot(plot_filename = ('%s_snr_vs_width.pdf' % json_filename[:-5]),
-                      xvec = [ s['true_width'] for s in json_obj['sims'] ],
-                      snr_arr = snr_arr,
-                      xmin = json_obj['search_params']['width_min'],
-                      xmax = json_obj['search_params']['width_max'],
-                      xlabel = 'intrinsic width [sec]',
-                      dedisperser_names = dedisperser_names)
-
-
-####################################################################################################
-
-
-class rerunnable_gaussian_noise_stream(rf_pipelines.wi_stream):
-    """
-    Similar to rf_pipelines.gaussian_noise_stream, but allows the stream to be rerun by saving its state:
-    
-        s = rerunnable_gaussian_noise_stream(...)
-        saved_state = s.get_state()
-           # ... run stream ...
-        s.set_state(saved_state)
-           # ... rerunning stream will give same output ...
-
-    If 'no_noise_flag' is True, then the stream will output zeroes instead of Gaussian random numbers.
-    """
-
-    def __init__(self, nfreq, nt_tot, freq_lo_MHz, freq_hi_MHz, dt_sample, simulate_noise=True, state=None, nt_chunk=None):
-        rf_pipelines.wi_stream.__init__(self, 'rereunnable_gaussian_noise_stream')
-
-        if nt_tot <= 0:
-            raise RuntimeError('rerunnable_gaussian_noise_stream constructor: nt_tot must be > 0')
-        if nt_chunk is None:
-            nt_chunk = min(1024, nt_tot)
-
-        # These are members of the rf_pipelines.wi_stream base class.
-        self.nfreq = nfreq
-        self.nt_chunk = nt_chunk
-
-        self.freq_lo_MHz = freq_lo_MHz
-        self.freq_hi_MHz = freq_hi_MHz
-        self.dt_sample = dt_sample
-        self.simulate_noise = simulate_noise
-        self.nt_tot = nt_tot
-        self.set_state(state)
-
-
-    def _bind_stream(self, json_attrs):
-        json_attrs['freq_lo_MHz'] = self.freq_lo_MHz
-        json_attrs['freq_hi_MHz'] = self.freq_hi_MHz
-        json_attrs['dt_sample'] = self.dt_sample
-
-
-    def _fill_chunk(self, intensity, weights, pos):
-        assert intensity.shape == weights.shape == (self.nfreq, self.nt_chunk)
-
-        if self.simulate_noise:
-            intensity[:,:] = self.state.standard_normal((self.nfreq, self.nt_chunk))
-        else:
-            intensity[:,:] = np.zeros((self.nfreq, self.nt_chunk), dtype=np.float32)
-
-        weights[:,:] = np.ones((self.nfreq, self.nt_chunk), dtype=np.float32)
-
-        return (pos + self.nt_chunk) < self.nt_tot
+                for i in xrange(nsamples):
+                    intensity[:,i] = np.random.standard_normal(size=nfreq)
+
+                # Add simulated FRB.  Note that we pay the computational cost of simulating the pulse
+                # "from scratch" for every dedisperser.  This sometimes (if nmc is large) saves memory,
+                # and the cost of simulating the pulse is small.
+
+                # The simpulse library uses the undispersed arrival time 'tu' of the pulse,
+                # whereas frb_olympics uses the central arrival time 'tmid', so we need to translate.
+
+                dt_i = dispersion_delay(true_params['dm'], freq_hi_MHz)
+                dt_f = dispersion_delay(true_params['dm'], freq_lo_MHz)
+                true_tu = true_params['tmid'] - dt_i - (dt_f-dt_i)/2.0
+
+                # Note that 'nt' is the number of samples used internally by simpulse to represent
+                # the pulse.  (FIXME: tune this parameter.) 
+
+                p = simpulse.single_pulse(nt = 1024,
+                                          nfreq = nfreq,
+                                          freq_lo_MHz = freq_lo_MHz,
+                                          freq_hi_MHz = freq_hi_MHz,
+                                          dm = true_params['dm'],
+                                          sm = true_params['sm'],
+                                          intrinsic_width = true_params['intrinsic_width'],
+                                          fluence = 1.0,
+                                          spectral_index = true_params['spectral_index'],
+                                          undispersed_arrival_time = true_tu)
+
+                # We simulate the pulse with an nominal normalization (fluence=1.0), and
+                # rescale to the target SNR.
+
+                nominal_snr = p.get_signal_to_noise(self.search_params.dt_sample)
+                rescaling_factor = true_params['snr'] / nominal_snr
+                p.fluence *= rescaling_factor
+
+                # Add FRB here!
+                p.add_to_timestream(intensity, 0.0, timestream_length, freq_hi_to_lo=True)
+
+                # Run dedisperser here!
+                dedisperser_output = d.dedisperse(intensity)
+
+                # The return value of d.dedisperser() should be a dictionary containing 'snr', 'dm',
+                # and precisely one of { 'tmid', 'tini', or 'tfin' }.
+
+                if not isinstance(dedisperser_output, dict):
+                    raise RuntimeError('expected return value of %s.dedisperse() to be a dict, got %s' %  (d.__class__.__name__, dedisperser_output.__class__.__name__))
+
+                required_keys = set(['snr','dm'])
+                optional_keys = set(['tini','tmid','tfin'])
+                missing_keys = required_keys.difference(dedisperser_output.keys())
+                unrecognized_keys = set(dedisperser_output.keys()).difference(required_keys).difference(optional_keys)
+
+                if len(missing_keys) > 0:
+                    raise RuntimeError('return value of %s.dedisperse() does not contain key(s) %s' %  (d.__class__.__name__, sorted(missing_keys)))
+                if len(unrecognized_keys) > 0:
+                    raise RuntimeError('return value of %s.dedisperse() contains unrecognized key(s) %s' %  (d.__class__.__name__, sorted(unrecognized_keys)))
+                if len(dedisperser_output.keys()) != 3:
+                    raise RuntimeError('return value of %s.dedisperse() must contain precisely one of %s' % (d.__class__.__name__, sorted(optional_keys)))
+
+                # If tini or tfin were specified, translate to a value of tmid.
+
+                dm = dedisperser_output['dm']
+                dt = dispersion_delay(dm, freq_lo_MHz) - dispersion_delay(dm, freq_hi_MHz)
+
+                if not dedisperser_output.has_key('tmid') and dedisperser_output.has_key('tini'):
+                    dedisperser_output['tmid'] = dedisperser_output['tini'] + dt/2.0
+                if not dedisperser_output.has_key('tmid') and dedisperser_output.has_key('tfin'):
+                    dedisperser_output['tmid'] = dedisperser_output['tfin'] - dt/2.0
+
+                assert dedisperser_output.has_key('tmid')
+                
+                # Done with this (simulation, dedisperser) pair.
+                # Record the results in the 'sim_json' data structure.
+
+                self.sim_json[nmc_in+imc]['recovered_params'].append(dedisperser_output)
+
+            d.deallocate()
+
+
+    def jsonize(self):
+        return {
+            'search_params': self.search_params.jsonize(),
+            'dedisperser_list': self.dedisperser_json,
+            'sims': self.sim_json
+        }
+
+
+    @staticmethod
+    def from_json(j):
+        sp = search_params.from_json(j['search_params'])
+        dlist = [ dedisperser_base.from_json(j) for j in j['dedisperser_list'] ]
+        return comparison(sp, dlist)
+
+
+    def make_snr_plot(self, plot_filename, xaxis_param, xaxis_label, legend_labels = None):
+        if len(self.sim_json) <= 1:
+            print '%s: no plot written, not enough sims' % plot_filename
+            return
+
+        xmin = getattr(self.search_params, xaxis_param + '_min')
+        xmax = getattr(self.search_params, xaxis_param + '_max')
+
+        if xmin == xmax:
+            print "%s: no plot written, the parameter '%s' was not varied in this run" % (plot_filename, xaxis_param)
+            return
+
+        if (legend_labels == None) or (legend_labels == [ ]):
+            legend_labels = [ ]
+
+            for d in self.dedisperser_list:
+                # Initialize legend_labels from dedisperser names.
+                # Dedisperser names often contain underscores, which confuse matplotlib's tex rendering,
+                # so we replace '_' by r'\_'.  This is not a systematic approach to making the names
+                # "TeX safe", but it's usually enough in practice!
+
+                n = copy.copy(d.name)
+                n = n.replace('_', r'\_')
+                legend_labels.append(n)
+
+        xvec = np.array([ s['true_params'][xaxis_param] for s in self.sim_json ])
+        yarr = np.array([ [ (r['snr']/s['true_params']['snr']) for r in s['recovered_params'] ] for s in self.sim_json ])
+
+        assert xvec.shape == (len(self.sim_json),)
+        assert yarr.shape == (len(self.sim_json), len(self.dedisperser_list))
+        assert len(legend_labels) == len(self.dedisperser_list)
+
+        plt.xlim(xmin, xmax)
+        plt.ylim(0.0, max(np.max(yarr),1.1))
+        plt.axhline(y=1, ls=':', color='k')
+        plt.xlabel(xaxis_label)
+        plt.ylabel('Optimality')
+
+        slist = [ ]
+        color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c']
+
+        for ids in xrange(len(self.dedisperser_list)):
+            c = color_list[ids % len(color_list)]
+            s = plt.scatter(xvec, yarr[:,ids], s=5, color=c, marker='o')
+            slist.append(s)
+
+            # Dedisperser names often contain underscores, which confuse matplotlib's tex rendering,
+            # so we replace '_' by r'\_'.  This is not a systematic approach to making the names
+            # "TeX safe", but it's usually enough in practice!
+
+            n = self.dedisperser_list[ids].name
+            n = n.replace('_', r'\_')
+            legend_labels.append(n)
+
+
+        plt.legend(slist, legend_labels, scatterpoints=1, loc='lower left')
+        plt.savefig(plot_filename)
+        plt.clf()
+
+        print 'wrote', plot_filename
         
 
-    def get_state(self):
-        """Returns the current RNG state."""
-        return copy.copy(self.state)
+    def make_snr_plots(self, plot_filename_stem, legend_labels = None):
+        todo = [ ('dm', 'DM'),
+                 ('sm', 'SM'),
+                 ('spectral_index', 'Spectral index'),
+                 ('intrinsic_width', 'Intrinsic width') ]
 
-
-    def set_state(self, state):
-        """Restores the RNG state to a previous value, obtained by calling get_state()."""
-
-        if state is None:
-            self.state = np.random.RandomState()
-        else:
-            assert isinstance(state, np.random.RandomState)
-            self.state = copy.copy(state)
+        for (xaxis_param, xaxis_label) in todo:
+            plot_filename = '%s_snr_vs_%s.pdf' % (plot_filename_stem, xaxis_param)
+            self.make_snr_plot(plot_filename, xaxis_param, xaxis_label, legend_labels)
