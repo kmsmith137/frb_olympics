@@ -2,9 +2,6 @@
 
 To run the example:
 ```
-bonsai-mkweight example0_bonsai_config_n2048.txt example0_bonsai_config_n2048.hdf5
-bonsai-mkweight example0_bonsai_config_n4096.txt example0_bonsai_config_n4096.hdf5
-./run-example0.py
+run-frb-olympics -o example0 -n 64 search_params.json bonsai_ntree2048_nups1.json bonsai_ntree4096_nups2.json 
 ```
-
 The outputs are `example0.json` and `example0_snr_vs_dm.pdf`.

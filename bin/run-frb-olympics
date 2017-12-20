@@ -60,7 +60,7 @@ def is_well_formed_outfile(filename):
         j = json.load(open(filename))
         assert set(j.keys()) == set(['search_params', 'dedisperser_list', 'sims'])
         return True
-    finally:
+    except:
         return False
 
 
@@ -70,18 +70,17 @@ if os.path.exists(json_outfile):
     if is_well_formed_outfile(json_outfile):
         print 'Note: outfile %s already exists from previous run, and will be overwritten' % json_outfile
     else:
-        print "Error: %s already exists, and does not appear to be an frb_olympics outfile." % json_outfile
-        print "This is treated as an error.  If the file isn't important, you can delete it"
-        print "by hand and rerun 'run-frb-olympics'."
+        print "Fatal: %s already exists, and does not appear to be an frb_olympics outfile." % json_outfile
+        print "This is treated as an error.  If the file isn't important, you can delete it by hand and rerun 'run-frb-olympics'."
         sys.exit(1)
 
 
-search_params = frb_olympics.search_params(args.sp_filename)
+search_params = frb_olympics.search_params.from_json(args.sp_filename)
 dedisperser_list = [ frb_olympics.dedisperser_base.from_json(d) for d in args.dedisperser_filenames ]
 
 c = frb_olympics.comparison(search_params, dedisperser_list)
 
-for i in xrange(args.nmc):
+for i in xrange(args.num_sims):
     c.run(1)
 
 json.dump(c.jsonize(), open(json_outfile,'w'), indent=4)

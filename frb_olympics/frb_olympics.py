@@ -17,23 +17,28 @@ def dispersion_delay(dm, freq_MHz):
     return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
 
-def _from_json_helper(j, filename, caller_name):
-    if isinstance(j, basestring):
-        # Interpret as filename
-        filename = j
-        f = open(j)
+class json_read_helper:
+    def __init__(self, j, filename, caller_name, expected_keys = [ ]):
+        if isinstance(j, basestring):
+            # Interpret as filename
+            filename = j
+            f = open(filename)
     
-        try:
-            j = json.load(f)
-        except:
-            raise RuntimeError("%s: couldn't parse json file" % filename)
+            try:
+                j = json.load(f)
+            except:
+                raise RuntimeError("%s: couldn't parse json file" % filename)
 
-    if filename is None:
-        filename = caller_name
-    if not isinstance(j, dict):
-        raise RuntimeError('%s: expected dict, got %s' % (filename, j.__class__.__name__))
+        self.json = j
+        self.filename = filename   # can be None
+        self.diagnostic_name = filename if (filename is not None) else caller_name
 
-    return (j, filename)
+        if not isinstance(j, dict):
+            raise RuntimeError('%s: expected dict, got %s' % (self.diagnostic_name, j.__class__.__name__))
+
+        for k in expected_keys:
+            if not j.has_key(k):
+                raise RuntimeError("%s: key '%s' not found" % (self.diagnostic_name, k))
 
 
 ####################################################################################################
@@ -123,38 +128,36 @@ class search_params:
     
     @staticmethod
     def from_json(j, filename=None):
-        (j, filename) = _from_json_helper(j, filename, 'frb_olympics.search_params.from_json()')
+        r = json_read_helper(j, filename, 'frb_olympics.search_params.from_json()')
 
         required_keys = set(['nfreq', 'freq_lo_MHz', 'freq_hi_MHz', 'nsamples', 'dt_sample', 'dm_max'])
         optional_keys = set(['dm_min', 'sm_min', 'sm_max', 'spectral_index_min', 'spectral_index_max', 'intrinsic_width_min', 'intrinsic_width_max', 'snr_min', 'snr_max' ])
-        specified_keys = set([ str(x) for x in j.keys() ])
-        
-        missing_keys = required_keys.difference(specified_keys)
-        unrecognized_keys = set(specified_keys).difference(required_keys).difference(optional_keys)
+
+        actual_keys = set([ str(x) for x in r.json.keys() ])
+        missing_keys = required_keys.difference(actual_keys)
+        unrecognized_keys = set(actual_keys).difference(required_keys).difference(optional_keys)
 
         if len(missing_keys) > 0:
-            raise RuntimeError('%s: missing key(s): %s' % (filename, sorted(missing_keys)))
+            raise RuntimeError('%s: missing key(s): %s' % (r.diagnostic_name, sorted(missing_keys)))
         if len(unrecognized_keys) > 0:
-            raise RuntimeError('%s: unrecognized key(s): %s' % (filename, sorted(unrecognized_keys)))
+            raise RuntimeError('%s: unrecognized key(s): %s' % (r.diagnostic_name, sorted(unrecognized_keys)))
 
-        jj = copy.copy(j)
-        jj['filename'] = filename
-        
-        return search_params(**jj)
+        kwds = copy.copy(r.json)
+        kwds['filename'] = filename
+
+        return search_params(**kwds)
 
 
 ####################################################################################################
 
 
 class dedisperser_base:
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, tex_label):
+        assert tex_label is not None
+        self.tex_label = tex_label
 
 
-    def init_search_params(self, sp):
-        """
-        The 'sp' argument is an object of type search_params.
-        """
+    def init_search_params(self, sparams):
         raise RuntimeError("frb_olympics.dedisperser_base.init_search_params() was not overloaded by subclass %s" % self.__class__.__name__)
 
 
@@ -179,41 +182,59 @@ class dedisperser_base:
 
     @staticmethod
     def from_json(j, filename=None):
-        (j, filename) = _from_json_helper(j, filename, 'frb_olympics.search_params.from_json()')
-        
+        expected_keys = [ 'module_name', 'class_name' ]
+        r = json_read_helper(j, filename, 'frb_olympics.search_params.from_json()', expected_keys)
+
+        j = copy.copy(r.json)
+        module_name = j['module_name']
+        class_name = j['class_name']
+
+        if not j.has_key('tex_label'):
+            if r.filename is not None:
+                t = os.path.basename(r.filename)
+                t = t.split('.')[0]
+            else:
+                t = class_name
+
+            # Replace underscores by r'\_', to avoid crashing latex!
+            t = t.replace('_', r'\_')
+            j['tex_label'] = t
+            
         try:
-            m = importlib.import_module(j['module_name'])
+            m = importlib.import_module(module_name)
         except ImportError:
-            raise ImportError("%s: couldn't import module %s" % (filename, j['module_name']))
-                              
-        c = getattr(m, j['class_name'], None)
+            raise ImportError("%s: couldn't import module %s" % (r.diagnostic_name, module_name))
+
+        c = getattr(m, class_name, None)
 
         if c is None:
-            raise RuntimeError("%s: couldn't find class '%s' in module '%s" % (filename, j['class_name'], j['module_name']))
+            raise RuntimeError("%s: couldn't find class '%s' in module '%s" % (r.diagnostic_name, class_name, module_name))
         if not issubclass(c, dedisperser_base):
-            raise RuntimeError("%s: expected class %s.%s to be a subclass of frb_olympics.dedisperser_base" % (filename, j['module_name'], j['class_name']))
+            raise RuntimeError("%s: expected class %s.%s to be a subclass of frb_olympics.dedisperser_base" % (r.diagnostic_name, module_name, class_name))
         if c.from_json == dedisperser_base.from_json:
-            raise RuntimeError("%s: expected class %s.%s to override dedisperser_base.from_json()" % (filename, j['module_name'], j['class_name']))
+            raise RuntimeError("%s: expected class %s.%s to override dedisperser_base.from_json()" % (r.diagnostic_name, module_name, class_name))
 
-        return c.from_json(j, f)
+        return c.from_json(j, r.filename)
 
 
 ####################################################################################################
 
 
 class comparison:
-    def __init__(self, sp, dedisperser_list):
-        assert isinstance(sp, search_params)
+    def __init__(self, sparams, dedisperser_list, sim_json = None):
+        assert isinstance(sparams, search_params)
         assert len(dedisperser_list) > 0
 
-        self.search_params = sp
+        # FIXME should error-check 'sim_json'
+
+        self.search_params = sparams
         self.dedisperser_list = dedisperser_list
         self.dedisperser_json = [ ]
-        self.sim_json = [ ]
+        self.sim_json = sim_json if (sim_json is not None) else [ ]
 
         for d in dedisperser_list:
             assert isinstance(d, dedisperser_base)
-            assert hasattr(d, 'name')
+            assert hasattr(d, 'tex_label')
 
             j = d.jsonize()
 
@@ -222,10 +243,10 @@ class comparison:
 
             j['module_name'] = d.__module__
             j['class_name'] = d.__class__.__name__
-            j['name'] = d.name
+            j['tex_label'] = d.tex_label
 
             self.dedisperser_json.append(j)
-            d.init_search_params(sp)
+            d.init_search_params(sparams)
 
 
     def run(self, nmc, noisy=True):
@@ -247,7 +268,7 @@ class comparison:
 
             for imc in xrange(nmc):
                 if noisy:
-                    print 'frb_olympics: dedisperser %d/%d (%s), simulation %d' % (id+1, len(self.dedisperser_list), d.name, nmc_in+imc+1)
+                    print 'frb_olympics: dedisperser %d/%d (%s), simulation %d' % (id+1, len(self.dedisperser_list), d.tex_label, nmc_in+imc+1)
 
                 if id == 0:
                     # Simulate random FRB params.
@@ -367,26 +388,12 @@ class comparison:
         if xmin == xmax:
             print "%s: no plot written, the parameter '%s' was not varied in this run" % (plot_filename, xaxis_param)
             return
-
-        if (legend_labels == None) or (legend_labels == [ ]):
-            legend_labels = [ ]
-
-            for d in self.dedisperser_list:
-                # Initialize legend_labels from dedisperser names.
-                # Dedisperser names often contain underscores, which confuse matplotlib's tex rendering,
-                # so we replace '_' by r'\_'.  This is not a systematic approach to making the names
-                # "TeX safe", but it's usually enough in practice!
-
-                n = copy.copy(d.name)
-                n = n.replace('_', r'\_')
-                legend_labels.append(n)
-
+                               
         xvec = np.array([ s['true_params'][xaxis_param] for s in self.sim_json ])
         yarr = np.array([ [ (r['snr']/s['true_params']['snr']) for r in s['recovered_params'] ] for s in self.sim_json ])
 
         assert xvec.shape == (len(self.sim_json),)
         assert yarr.shape == (len(self.sim_json), len(self.dedisperser_list))
-        assert len(legend_labels) == len(self.dedisperser_list)
 
         plt.xlim(xmin, xmax)
         plt.ylim(0.0, max(np.max(yarr),1.1))
@@ -396,20 +403,12 @@ class comparison:
 
         slist = [ ]
         color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c']
+        legend_labels = [ d.tex_label for d in self.dedisperser_list ]
 
         for ids in xrange(len(self.dedisperser_list)):
             c = color_list[ids % len(color_list)]
             s = plt.scatter(xvec, yarr[:,ids], s=5, color=c, marker='o')
             slist.append(s)
-
-            # Dedisperser names often contain underscores, which confuse matplotlib's tex rendering,
-            # so we replace '_' by r'\_'.  This is not a systematic approach to making the names
-            # "TeX safe", but it's usually enough in practice!
-
-            n = self.dedisperser_list[ids].name
-            n = n.replace('_', r'\_')
-            legend_labels.append(n)
-
 
         plt.legend(slist, legend_labels, scatterpoints=1, loc='lower left')
         plt.savefig(plot_filename)
@@ -439,11 +438,15 @@ class comparison:
 
     @staticmethod
     def from_json(j, filename=None):
-        (j, filename) = _from_json_helper(j, filename, 'frb_olympics.comparison.from_json()')
+        r = json_read_helper(j, filename, 'frb_olympics.comparison.from_json()',
+                             expected_keys = ['search_params', 'dedisperser_list', 'sims'])
 
-        sp = search_params.from_json(j['search_params'])
-        dlist = [ dedisperser_base.from_json(j) for j in j['dedisperser_list'] ]
+        sparams = search_params.from_json(r.json['search_params'], r.filename)
+        sim_json = r.json['sims']
 
-        ret = comparison(cp, dlist)
-        ret.sim_json = j['sims']
-        return ret
+        dlist = [ ]
+        for dj in r.json['dedisperser_list']:
+            d = dedisperser_base.from_json(dj, r.filename)
+            dlist.append(d)
+
+        return comparison(sparams, dlist, sim_json)
