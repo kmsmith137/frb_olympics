@@ -7,9 +7,9 @@
     "freq_hi_MHz": 800.0,
     "dt_sample": 0.001,
     "nt_chunk": 1024,
-    "tree_size": [ 4096, 4096, 4096 ],
-    "nups": [ 4, 2, 1 ],
-    "nds": [ 1, 1, 1],
-    "ndm_per_trigger": 64,
-    "nt_per_trigger": 64
+    "tree_size": [ 4096, 4096 ],
+    "nups": [ 2, 1 ],
+    "nds": [ 1, 1 ],
+    "dm_coarse_graining_factor": 16,
+    "time_coarse_graining_factor": 16
 }

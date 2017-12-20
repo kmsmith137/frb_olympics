@@ -9,9 +9,11 @@ class MyParser(argparse.ArgumentParser):
         if file is None:
             file = sys.stdout
 
-        print >>file, 'Usage: run-frb-olympics [-o RUN_NAME] <search_params.json> <dedisperser1.json> ... <dedisperserN.json> <num_sims>'
-        print >>file, '    -o: required, used to generate output filenames RUN_NAME.json, RUN_NAME_XXX.pdf'
-        print >>file, '    -h: show longer help message and exit'
+        print >>file, "Usage: run-frb-olympics [-o RUN_NAME] [-n NUM_SIMS] [-N] <search_params.json> <dedisperser1.json> ... <dedisperserN.json>"
+        print >>file, "    -o: required, used to generate output filenames RUN_NAME.json, RUN_NAME_XXX.pdf"
+        print >>file, "    -n: required, number of Monte Carlo simulations"
+        print >>file, "    -N: don't include noise in the sims"
+        print >>file, "    -h: show longer help message and exit"
 
 
     def error(self, message=None):
@@ -34,6 +36,7 @@ parser = MyParser()
 
 parser.add_argument('sp_filename')
 parser.add_argument('dedisperser_filenames', nargs='+')
+parser.add_argument('-N', dest='Nflag', action='store_true')
 parser.add_argument('-n', dest='num_sims', type=int)
 parser.add_argument('-o', dest='run_name')
 
@@ -78,7 +81,7 @@ if os.path.exists(json_outfile):
 search_params = frb_olympics.search_params.from_json(args.sp_filename)
 dedisperser_list = [ frb_olympics.dedisperser_base.from_json(d) for d in args.dedisperser_filenames ]
 
-c = frb_olympics.comparison(search_params, dedisperser_list)
+c = frb_olympics.comparison(search_params, dedisperser_list, add_noise = not args.Nflag)
 
 for i in xrange(args.num_sims):
     c.run(1)

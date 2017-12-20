@@ -221,7 +221,7 @@ class dedisperser_base:
 
 
 class comparison:
-    def __init__(self, sparams, dedisperser_list, sim_json = None):
+    def __init__(self, sparams, dedisperser_list, sim_json=None, add_noise=True):
         assert isinstance(sparams, search_params)
         assert len(dedisperser_list) > 0
 
@@ -231,6 +231,7 @@ class comparison:
         self.dedisperser_list = dedisperser_list
         self.dedisperser_json = [ ]
         self.sim_json = sim_json if (sim_json is not None) else [ ]
+        self.add_noise = add_noise
 
         for d in dedisperser_list:
             assert isinstance(d, dedisperser_base)
@@ -298,8 +299,11 @@ class comparison:
                 # Simulate Gaussian random noise.  There is no float32 gaussian random number generator in numpy, 
                 # so we simulate in float64 and down-convert.  We do this in slices to save memory!
 
-                for i in xrange(nsamples):
-                    intensity[:,i] = np.random.standard_normal(size=nfreq)
+                if self.add_noise:
+                    for i in xrange(nsamples):
+                        intensity[:,i] = np.random.standard_normal(size=nfreq)
+                else:
+                    intensity[:,:] = 0.
 
                 # Add simulated FRB.  Note that we pay the computational cost of simulating the pulse
                 # "from scratch" for every dedisperser.  This sometimes (if nmc is large) saves memory,

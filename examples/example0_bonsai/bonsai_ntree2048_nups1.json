@@ -10,6 +10,6 @@
     "tree_size": [ 2048, 2048 ],
     "nups": [ 1, 1 ],
     "nds": [ 1, 2 ],
-    "ndm_per_trigger": 64,
-    "nt_per_trigger": 64
+    "dm_coarse_graining_factor": 16,
+    "time_coarse_graining_factor": 16
 }
