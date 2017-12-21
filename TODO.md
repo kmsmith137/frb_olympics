@@ -1,3 +1,15 @@
+Here is a "wish list" of dedispersers we'd like to compare:
+
+  - Heimdall (in progress)
+
+  - sigproc
+
+  - presto `single_pulse_search`
+
+  - FREDDA (not public)
+
+  - AstroAccelerate
+
 General:
 
   - Currently, the entire intensity array is held in memory, and dedispersed with a single call

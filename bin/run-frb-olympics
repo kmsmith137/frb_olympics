@@ -4,6 +4,11 @@ import sys
 import argparse
 
 
+####################################################################################################
+#
+# Argument parsing and checking
+
+
 class MyParser(argparse.ArgumentParser):
     def print_usage(self, file=None):
         if file is None:
@@ -28,9 +33,24 @@ class MyParser(argparse.ArgumentParser):
     def print_help(self, file=None):
         self.print_usage(file)
         print >>file
+        print >>file, 'The -N flag deserves special discussion:'
+        print >>file
+        print >>file, '    If -N is specified, then the simulations will contain an FRB with no noise.  (By default,'
+        print >>file, '    if -N is not specified, then the simulations will contain an FRB + noise.)'
+        print >>file
+        print >>file, '    This option only produces reasonable results if all of the dedispersers use precomputed'
+        print >>file, '    variances to normalize their signal-to-noise.  This is the case for both of the dedispersers'
+        print >>file, '    currently implemented (`bonsai_dedisperser` and `bz_fdmt_dedisperser`), so using the -N'
+        print >>file, '    flag makes the SNR plots look a little nicer, by removing noise scatter.'
+        print >>file
+        print >>file, '    However, for many dedispersers (such as Heimdall) the variances are estimated directly'
+        print >>file, '    from the output of the dedispersion transform, rather than being precomputed.  In this'
+        print >>file, '    case, using the -N flag will result in spuriously large SNR values, and results will not'
+        print >>file, '    make sense!'
+        print >>file
         print >>file, "For examples of the search_params.json and dedisperser.json file formats,"
-        print >>file, "see example frb_olympics runs in the examples/ directory"
-
+        print >>file, "see example frb_olympics runs in the examples/ directory."
+        print >>file
 
 parser = MyParser()
 
@@ -51,6 +71,8 @@ if args.num_sims <= 0:
 
 
 ####################################################################################################
+#
+# Read input files, run sims, write output files.
 
 
 import os
@@ -59,9 +81,16 @@ import frb_olympics
 
 
 def is_well_formed_outfile(filename):
+    """
+    Returns True if the file "looks" like the output of ensemble.jsonize().
+
+    (It would be easiest to just call ensemble.from_json() here, but I wanted to avoid
+    the overhead of deserializing all the dedispersers.)
+    """
+
     try:
         j = json.load(open(filename))
-        assert set(j.keys()) == set(['search_params', 'dedisperser_list', 'sims'])
+        assert set(j.keys()) == set(['add_noise', 'search_params', 'dedisperser_list', 'sims'])
         return True
     except:
         return False
@@ -78,15 +107,18 @@ if os.path.exists(json_outfile):
         sys.exit(1)
 
 
+# Construct the 'ensemble' object.
 search_params = frb_olympics.search_params.from_json(args.sp_filename)
 dedisperser_list = [ frb_olympics.dedisperser_base.from_json(d) for d in args.dedisperser_filenames ]
-
 e = frb_olympics.ensemble(search_params, dedisperser_list, add_noise = not args.Nflag)
 
+# Run sims
 for i in xrange(args.num_sims):
     e.run(1)
 
+# Write json outfile.
 json.dump(e.jsonize(), open(json_outfile,'w'), indent=4)
 print 'wrote', json_outfile
 
+# Write plots.
 e.make_snr_plots(args.run_name)

@@ -31,7 +31,7 @@ Detailed documentation is in the python docstrings.  Some high-level points to b
         dedisperser list, the true FRB parameters in each simulation, and the
         recovered parameters from each dedisperser.
 
-      - This JSON file can be postprocessed to produce various plots etc.
+      - This JSON file can be postprocessed to produce various plots.
 
   - Scattering is implemented as an exponential profile whose characteristic timescale
     depends on frequency as f^(-4.4).  In contrast, the "intrinsic width" of an FRB is
@@ -49,14 +49,28 @@ Detailed documentation is in the python docstrings.  Some high-level points to b
 
   - There are four possible definitions of the arrival time of an FRB:
 
-      "initial" arrival time: arrival time at the highest frequency in the band (i.e. least delayed)
-      "final" arrival time: arrival time at the lowest frequency in the band (i.e. most delayed)
-      "middle" arrival time: average of initial and final times (warning: not the arrival time at the central frequency!)
-      "undispersed" arrival time: arrival time in the limit of high frequency.
+      - "initial" arrival time: arrival time at the highest frequency in the band (i.e. least delayed)
+      - "final" arrival time: arrival time at the lowest frequency in the band (i.e. most delayed)
+      - "middle" arrival time: average of initial and final times (warning: not the arrival time at the central frequency!)
+      - "undispersed" arrival time: arrival time in the limit of high frequency.
 
     In the core frb_olympics code, we generally use t_middle, but the individual dedisperser
     classes can return either t_initial, t_middle, or t_final, and frb_olympics will translate 
     to a value of t_middle.
+
+  - The 'run-frb-olympics' script has a -N flag which deserves special discussion.  If
+    specified, then the simulations will contain an FRB with no noise.  (By default, if -N
+    is not specified, then the simulations will contain an FRB + noise.)
+    
+    This option only produces reasonable results if all of the dedispersers use precomputed
+    variances to normalize their signal-to-noise.  This is the case for both of the dedispersers
+    currently implemented (`bonsai_dedisperser` and `bz_fdmt_dedisperser`), so using the -N
+    flag makes the SNR plots look a little nicer, by removing noise scatter.
+
+    However, for many dedispersers (such as Heimdall) the variances are estimated directly
+    from the output of the dedispersion transform, rather than being precomputed.  In this
+    case, using the -N flag will result in spuriously large SNR values, and results will not
+    make sense!
 """
 
 import os
@@ -229,6 +243,8 @@ class search_params:
         
 
     def jsonize(self):
+        """Returns a python dictionary which is a valid JSON object."""
+
         return { 'nfreq': self.nfreq,
                  'freq_lo_MHz': self.freq_lo_MHz,
                  'freq_hi_MHz': self.freq_hi_MHz,
@@ -248,6 +264,8 @@ class search_params:
     
     @staticmethod
     def from_json(j, filename=None):
+        """The "inverse" of jsonize(): it takes a python dictionary which is valid JSON, and returns a search_params instance."""
+
         r = json_read_helper(j, filename, 'frb_olympics.search_params.from_json()')
 
         required_keys = set(['nfreq', 'freq_lo_MHz', 'freq_hi_MHz', 'nsamples', 'dt_sample', 'dm_max'])
@@ -336,9 +354,9 @@ class dedisperser_base:
 
         The return value of dedisperse() is a dictionary with 3 members: 'snr', 'dm', and one of { 'tmid', 'tini', 'tfin' }.
         This allows the dedisperser to use one of three possible definitions of the arrival time of an FRB:
-           "initial" arrival time: arrival time at the highest frequency in the band (i.e. least delayed)
-           "final" arrival time: arrival time at the lowest frequency in the band (i.e. most delayed)
-           "middle" arrival time: average of initial and final times (warning: not the arrival time at the central frequency!)
+           - "initial" arrival time: arrival time at the highest frequency in the band (i.e. least delayed)
+           - "final" arrival time: arrival time at the lowest frequency in the band (i.e. most delayed)
+           - "middle" arrival time: average of initial and final times (warning: not the arrival time at the central frequency!)
 
         (Note that the caller uses 'tmid', and will translate whatever arrival time is returned to a value of 'tmid',
         but this detail shouldn't affect the implementation of dedisperse() in the subclass.)
@@ -364,7 +382,8 @@ class dedisperser_base:
     @staticmethod
     def from_json(j, filename=None):
         """
-        Must be overridden by subclass.  The return value should be an instance of the subclass.
+        Must be defined by subclass.  This is the "inverse" of jsonize(): it takes a python dictionary which
+        is valid JSON, and returns an instance of the subclass.
 
         One possible point of confusion: there will be two versions of from_json(), the base class staticmethod
         dedisperser_base.from_json(), and the subclass staticmethod dedisperser_subclass.from_json().  To construct
@@ -384,6 +403,9 @@ class dedisperser_base:
         module_name = j['module_name']
         class_name = j['class_name']
 
+        # If the tex_label is not specified in the json data, construct one from either
+        # the filename (first choice) or class name (second choice).
+
         if not j.has_key('tex_label'):
             if r.filename is not None:
                 t = os.path.basename(r.filename)
@@ -394,6 +416,9 @@ class dedisperser_base:
             # Replace underscores by r'\_', to avoid crashing latex!
             t = t.replace('_', r'\_')
             j['tex_label'] = t
+
+        # Using the JSON fields 'module_name' and 'class_name', import the appropriate
+        # dedisperser_base subclass.  There is a lot of sanity checking here!
             
         try:
             m = importlib.import_module(module_name)
@@ -406,9 +431,15 @@ class dedisperser_base:
             raise RuntimeError("%s: couldn't find class '%s' in module '%s" % (r.diagnostic_name, class_name, module_name))
         if not issubclass(c, dedisperser_base):
             raise RuntimeError("%s: expected class %s.%s to be a subclass of frb_olympics.dedisperser_base" % (r.diagnostic_name, module_name, class_name))
+
+        # This sanity check is important to prevent an infinite loop, if the subclass does not
+        # define the from_json() staticmethod.
+
         if c.from_json == dedisperser_base.from_json:
             raise RuntimeError("%s: expected class %s.%s to override dedisperser_base.from_json()" % (r.diagnostic_name, module_name, class_name))
 
+        # Now delegate to the subclass from_json() staticmethod.
+        
         return c.from_json(j, r.filename)
 
 
@@ -440,6 +471,15 @@ class ensemble:
     """
 
     def __init__(self, sparams, dedisperser_list, sim_json=None, add_noise=True):
+        """
+        Constructor arguments:
+
+          - sparams: instance of 'class search_params'.
+          - dedisperser_list: list of instances of subclasses of 'class dedisperser_base'.
+          - add_noise: if True then simulations will be (FRB+noise), if False then sims will be FRB-only.
+          - sim_json (optional): json data for previously-run sims, if any.
+        """
+
         assert isinstance(sparams, search_params)
         assert len(dedisperser_list) > 0
 
@@ -467,10 +507,29 @@ class ensemble:
             j['tex_label'] = d.tex_label
 
             self.dedisperser_json.append(j)
+
+            # Note call dedisperser_base.init_search_params() here.
             d.init_search_params(sparams)
 
 
     def run(self, nmc, noisy=True):
+        """
+        Runs 'nmc' Monte Carlo simulations, and appends the results to the 'class ensemble' internal state.
+
+        In principle the interface is general enough to make either the simulation or the dedisperser the
+        outer loop.  For example:
+        
+            # Run 1000 Monte Carlo simulations, with outer loop over simulation and inner loop over dedisperser.
+            ensemble.run(1000)
+
+            # Run 1000 Monte Carlo simulations, with outer loop over dedipserser and inner loop over simulation.
+            for i in xrange(1000):
+                ensemble.run(1)
+
+        However, I ended up deciding to use the latter form (outer loop over dedipserser and inner loop over simulation)
+        exclusively, so the interface could be simplified by replacing run(nmc) by run_one().
+        """
+
         nfreq = self.search_params.nfreq
         nsamples = self.search_params.nsamples
         freq_lo_MHz = self.search_params.freq_lo_MHz
@@ -484,9 +543,11 @@ class ensemble:
         max_dispersion_delay = dispersion_delay(dm_max, freq_lo_MHz) - dispersion_delay(dm_max, freq_hi_MHz)
         noise_seeds = [ ]
 
+        # Outer loop over dedispersers.
         for (id,d) in enumerate(self.dedisperser_list):
             d.allocate()
 
+            # Inner loop over simulations.
             for imc in xrange(nmc):
                 if noisy:
                     print 'frb_olympics: dedisperser %d/%d (%s), simulation %d' % (id+1, len(self.dedisperser_list), d.tex_label, nmc_in+imc+1)
@@ -601,13 +662,34 @@ class ensemble:
 
                 self.sim_json[nmc_in+imc]['recovered_params'].append(dedisperser_output)
 
+            # End of inner loop over simulations; back to outer loop over dedispersers.
             d.deallocate()
 
 
     def make_snr_plot(self, plot_filename, xaxis_param, xaxis_label, legend_labels = None):
+        """
+        Makes one SNR plot, with 
+
+          - "Optimality" on the y-axis, i.e. (SNR)_recovered / (SNR)_true
+          - On the x-axis, either DM, SM, SNR_true, spectral index, or intrinsic width.
+          
+        Arguments:
+        
+          - plot_filename: should end in '.pdf'
+          - xaxis_param: either 'dm', 'sm', 'snr', 'spectral_index', 'intrinsic_width'
+          - xaxis_label: a TeX axis label consistent with xaxis_param, for example 'DM'.
+          - legend_labels: list of tex labels, one for each dedisperser.
+              (optional: if unspecified, then default tex_labels will be used.)
+        """
+
         if len(self.sim_json) <= 1:
             print '%s: no plot written, not enough sims' % plot_filename
             return
+
+        if legend_labels is None:
+            legend_labels = [ d.tex_label for d in self.dedisperser_list ]
+            
+        assert len(legend_labels) == len(self.dedisperser_list)
 
         xmin = getattr(self.search_params, xaxis_param + '_min')
         xmax = getattr(self.search_params, xaxis_param + '_max')
@@ -630,7 +712,6 @@ class ensemble:
 
         slist = [ ]
         color_list = [ 'b', 'r', 'm', 'g', 'k', 'y', 'c']
-        legend_labels = [ d.tex_label for d in self.dedisperser_list ]
 
         for ids in xrange(len(self.dedisperser_list)):
             c = color_list[ids % len(color_list)]
@@ -645,6 +726,25 @@ class ensemble:
         
 
     def make_snr_plots(self, plot_filename_stem, legend_labels = None):
+        """
+        Makes all possible SNR plots, with
+
+          - "Optimality" on the y-axis, i.e. (SNR)_recovered / (SNR)_true
+          - On the x-axis, either DM, SM, SNR_true, spectral index, or intrinsic width.
+          
+        Arguments:
+        
+          - plot_filename_stem: this will be used to generate filenames such as
+              ${plot_filename_stem}_snr_vs_${quantity}.pdf
+            where quantity = dm, sm, ...
+
+          - legend_labels: list of tex labels, one for each dedisperser.
+              (optional: if unspecified, then default tex_labels will be used.)
+
+        Note: if a parameter is not actually varied in the simulations, then the
+        corresponding plot will not be written.
+        """
+
         todo = [ ('dm', 'DM'),
                  ('sm', 'SM'),
                  ('spectral_index', 'Spectral index'),
@@ -656,7 +756,10 @@ class ensemble:
 
 
     def jsonize(self):
+        """Returns a python dictionary which is a valid JSON object."""
+
         return {
+            'add_noise': self.add_noise,
             'search_params': self.search_params.jsonize(),
             'dedisperser_list': self.dedisperser_json,
             'sims': self.sim_json
@@ -665,8 +768,10 @@ class ensemble:
 
     @staticmethod
     def from_json(j, filename=None):
-        r = json_read_helper(j, filename, 'frb_olympics.ensemble.from_json()',
-                             expected_keys = ['search_params', 'dedisperser_list', 'sims'])
+        """The "inverse" of jsonize(): it takes a python dictionary which is valid JSON, and returns a search_params instance."""
+
+        expected_keys = [ 'add_noise', 'search_params', 'dedisperser_list', 'sims' ]
+        r = json_read_helper(j, filename, 'frb_olympics.ensemble.from_json()', expected_keys)
 
         sparams = search_params.from_json(r.json['search_params'], r.filename)
         sim_json = r.json['sims']
