@@ -1,0 +1,15 @@
+{
+    "module_name": "frb_olympics.bonsai_dedisperser",
+    "class_name": "bonsai_dedisperser",
+    "tex_label": "$N_{\\rm tree} = 4096, N_{\\rm ups} = 2$",
+    "nfreq": 1024,
+    "freq_lo_MHz": 400.0,
+    "freq_hi_MHz": 800.0,
+    "dt_sample": 0.001,
+    "nt_chunk": 1024,
+    "tree_size": [ 4096, 4096 ],
+    "nups": [ 2, 1 ],
+    "nds": [ 1, 1 ],
+    "dm_coarse_graining_factor": 16,
+    "time_coarse_graining_factor": 16
+}

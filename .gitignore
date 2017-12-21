@@ -5,3 +5,5 @@ build/
 dist/
 examples/example0_bonsai/example0.json
 examples/example0_bonsai/example0_snr_vs_dm.pdf
+examples/example1_bz_fdmt/example1.json
+examples/example1_bz_fdmt/example1_snr_vs_dm.pdf

@@ -62,7 +62,7 @@ class bz_fdmt_dedisperser(frb_olympics.dedisperser_base):
 
         nt0 = round_up_to_power_of_two(self.idm1 + 50)
         a = np.ones((sparams.nfreq, nt0), dtype=np.float32)
-        a = bz_fdmt.FDMT(a, freq_lo, freq_hi, self.idm1, np.float32, Verbose=False)
+        a = bz_fdmt.FDMT(a, self.freq_lo, self.freq_hi, self.idm1, np.float32, Verbose=False)
 
         self.var = np.copy(a[:,-1])   # 1D array of length ndm
 
@@ -77,12 +77,12 @@ class bz_fdmt_dedisperser(frb_olympics.dedisperser_base):
 
 
     def dedisperse(self, intensity):
-        assert intensity.shape == (self.search_params.nfreq, self.search_params.nt_chunk)
+        assert intensity.shape == (self.search_params.nfreq, self.search_params.nsamples)
 
         # Note frequency channel ordering is reversed here!
         # frb_olympics ordering is highest-to-lowest, but FDMT ordering is lowest-to-highest.
 
-        a = bz_fdmt.FDMT(in_buf[::-1,:], self.freq_lo, self.freq_hi, self.idm1, np.float32, Verbose=False)
+        a = bz_fdmt.FDMT(intensity[::-1,:], self.freq_lo, self.freq_hi, self.idm1, np.float32, Verbose=False)
 
         # Now we just want to find the (DM,time) of the most significant pulse.
 
@@ -92,7 +92,7 @@ class bz_fdmt_dedisperser(frb_olympics.dedisperser_base):
 
         for idm in xrange(self.idm0, self.idm1):
             it = int(np.argmax(a[idm,idm:])) + idm
-            snr = a[idm,it] / var[idm]**0.5
+            snr = a[idm,it] / self.var[idm]**0.5
 
             if (idm == 0) or (snr > max_snr):
                 max_snr = snr
