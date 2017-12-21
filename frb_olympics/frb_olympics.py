@@ -323,16 +323,22 @@ class dedisperser_base:
        d.deallocate()
     """
 
-    def __init__(self, tex_label):
+    def __init__(self, tex_label, precomputed_variance):
         """
         The subclass constructor should call this base class constructor.
 
-        In the case where the dedisperser is constructed from a json file, the tex_label will
-        be a member of the json dictionary passed to the subclass from_json() staticmethod.
-        See bonsai_dedisperser.from_json() for an example.
+        The 'variance_computed' flag should be True if the dedisperser uses precomputed variance
+        to normalize its signal-to-noise estimates (e.g. bonsai, FDMT).  It should be False if the
+        dedisperser estimates its variance directly from the output arrays (e.g. heimdall).
+        
+        This detail matters because 'run-frb-olympics -N' only makes sense if all dedispersers
+        use precomputed variances.  (For more discussion, see 'run-frb-olympics -h'.)
         """
+
         assert tex_label is not None
+
         self.tex_label = tex_label
+        self.precomputed_variance = precomputed_variance
 
 
     def init_search_params(self, sparams):
@@ -494,8 +500,12 @@ class ensemble:
         for d in dedisperser_list:
             assert isinstance(d, dedisperser_base)
             
-            if not hasattr(d, 'tex_label'):
-                raise RuntimeError("%s: no 'tex_label' member found, you probably forgot to call the base class constructor dedisperser_base.__init__()" % d.__class__.__name__)
+            for k in [ 'tex_label', 'precomputed_variance' ]:
+                if not hasattr(d, k):
+                    raise RuntimeError("%s: no '%s' member found, you probably forgot to call the base class constructor dedisperser_base.__init__()" % (d.__class__.__name__, k))
+
+            if (not add_noise) and (not d.precomputed_variance):
+                raise RuntimeError("%s: this dedisperser does not use precomputed variances, but is being used in a noiseless run (for more info, see 'run-frb-olympics -h')" % d.__class__.__name___)
 
             j = d.jsonize()
 

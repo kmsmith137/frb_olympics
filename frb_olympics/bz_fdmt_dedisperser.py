@@ -45,10 +45,15 @@ class bz_fdmt_dedisperser(frb_olympics.dedisperser_base):
         if not import_successful:
             # Rather than throw an exception, we let 'import bz_fdmt' throw an uncaught
             # exception, so that the caller can see what the problem is.
-            import bz_fdmt
+
+            import bz_fdmt as b
             raise RuntimeError("frb_olympics.bz_fdmt_dedisperser internal error: 'import bz_fdmt' worked on the second try?!")
 
-        frb_olympics.dedisperser_base.__init__(self, tex_label='FDMT')
+        # Note that because we precompute the variance of the FDMT output array
+        # (see the "little trick" in a comment below), we call the base class
+        # constructor with precomputed_variance=True.
+
+        frb_olympics.dedisperser_base.__init__(self, tex_label='FDMT', precomputed_variance = True)
 
 
     def init_search_params(self, sparams):

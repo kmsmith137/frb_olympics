@@ -48,20 +48,24 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
         if not import_successful:
             # Rather than throw an exception, we let 'import bonsai' throw an uncaught
             # exception, so that the caller can see what the problem is.
+
             import bonsai as b
             raise RuntimeError("frb_olympics.bonsai_dedisperser internal error: 'import bonsai' worked on the second try?!")
 
-        frb_olympics.dedisperser_base.__init__(self, tex_label)
-
-        # Setting use_analytic_normalization=True means that bonsai will precompute the
-        # exact variance of its output array, assuming that each element of the input
-        # intensity array is a unit Gaussian.  The bonsai output array is then normalized
-        # to "sigmas".
+        # Calling the bonsai.Dedisperser constructor with use_analytic_normalization=True 
+        # means that bonsai will precompute the exact variance of its output array, assuming 
+        # that each element of the input intensity array is a unit Gaussian.  The bonsai
+        # output array is then normalized to "sigmas".
         #
         # This setting is unsuitable for real data, but well-suited for the frb_olympics,
         # where we know that the noise is just an array of unit Gaussians.  In particular
         # it means that it is safe to use 'run-frb-olympics' with the -N flag, which removes
         # noise from the simulations (for more info, see 'run-frb-olympics -h').
+        #
+        # Note that because we're using the analytic normalization, we can call the
+        # dedipserser_base subclass constructor with precomputed_variance=True.
+
+        frb_olympics.dedisperser_base.__init__(self, tex_label, precomputed_variance=True)
 
         self.dedisperser = bonsai.Dedisperser(config, fill_rfi_mask=False, allocate=False, use_analytic_normalization=True)
 
