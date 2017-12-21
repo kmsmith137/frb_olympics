@@ -1,3 +1,64 @@
+"""
+frb_olympics: Simulation framework for studying optimality of FRB detection algorithms.
+
+For a quick start, try the examples in the `examples/` directory.
+
+Detailed documentation is in the python docstrings.  Some high-level points to be aware of:
+
+  - An frb_olympics Monte Carlo ensemble (`class ensemble`) consists of:
+
+      - A set of parameter ranges (represented by `class search_params`) for the 
+        following parameters: DM, pulse width, spectral index, scattering timescale,
+        signal-to-noise ratio.  In each Monte Carlo realization, each parameter is
+        randomly sampled from its allowed range.
+
+      - A list of dedispersers that will run on the simulations.  These are subclasses
+        of `class dedisperser_base`, and are "thin" wrappers around code in other
+        repositories.  
+
+        Currently, we implement `class bonsai_dedipserser`, which is a wrapper around 
+        bonsai (https://github.com/CHIMEFRB/bonsai), and `class bz_fdmt_dedisperser`,
+        which is a wrapper around FDMT (https://github.com/kmsmith137/bz_fdmt).
+        More coming soon!
+
+      - In each Monte Carlo realization, a simulation is generated consisting of
+        Gaussian random noise, plus a random FRB.  Each dedisperser analyzes the
+        simulation, makes one guess for the location of the FRB, and returns three
+        numbers: the estimated DM, arrival time, and SNR.
+
+      - The driver script `run-frb-olympics` will run an ensemble of Monte Carlo
+        simulations, and write a JSON file containing the search_params, the
+        dedisperser list, the true FRB parameters in each simulation, and the
+        recovered parameters from each dedisperser.
+
+      - This JSON file can be postprocessed to produce various plots etc.
+
+  - Scattering is implemented as an exponential profile whose characteristic timescale
+    depends on frequency as f^(-4.4).  In contrast, the "intrinsic width" of an FRB is
+    implemented as a frequency-independent Gaussian.
+
+    In each frequency channel, the pulse shape is the convolution of these two profiles,
+    plus a boxcar profile which represents dispersion delay within the channel.
+    
+    We should decide whether the Gaussian intrinsic profile is the best choice.  For
+    example, we could 
+
+  - We define the scattering measure (SM) to be the scattering timescale at 1 GHz, in
+    MILLISECONDS (not seconds).  This is the only place where we use milliseconds instead
+    of seconds!
+
+  - There are four possible definitions of the arrival time of an FRB:
+
+      "initial" arrival time: arrival time at the highest frequency in the band (i.e. least delayed)
+      "final" arrival time: arrival time at the lowest frequency in the band (i.e. most delayed)
+      "middle" arrival time: average of initial and final times (warning: not the arrival time at the central frequency!)
+      "undispersed" arrival time: arrival time in the limit of high frequency.
+
+    In the core frb_olympics code, we generally use t_middle, but the individual dedisperser
+    classes can return either t_initial, t_middle, or t_final, and frb_olympics will translate 
+    to a value of t_middle.
+"""
+
 import os
 import sys
 import copy
@@ -11,16 +72,54 @@ import matplotlib.pyplot as plt
 import simpulse
 
 
-# Note: cut-and-paste from "simpulse"
 def dispersion_delay(dm, freq_MHz):
     """Returns dispersion delay in seconds, for given DM and frequency."""
+
     return 4.148806e3 * dm / (freq_MHz * freq_MHz);
 
 
 class json_read_helper:
+    """
+    This helper class is used by functions which take a json object argument 'j'
+    for example search_params.from_json(j).  It allows 'j' to be either a python
+    dictionary or a filename.  It also does some error checking.
+
+    Members:
+    
+       self.json: python dictionary representing json data
+
+       self.filename: name of file that was originally read to obtain 'self.json'.
+          This can be None, if no filename is available (e.g. if json was constructed
+          directly from python, rather than reading from a file).
+
+       self.diagnostic_name: a string which can be printed during error reporting.
+          This is never None.
+    """
+
     def __init__(self, j, filename, caller_name, expected_keys = [ ]):
+        """
+        Constructor arguments:
+
+          j: either a python dictionary representing json data, or a string
+             which will be interpreted as a json filename.  (Be careful not
+             to pass the string serialization of the json data, or it will
+             be interpreted as a filename!)
+
+          filename: if 'j' is a dictionary was originally read from a file,
+             this should be the name of the file.  Otherwise, it can be None.
+
+          caller_name: name of function which called json_read_helper().
+             This cannot be none.
+        
+          expected_keys: if this is a nonempty list of strings, then some
+             error checking will be performed, by checking the json dictionary
+             for the presence of the given keys.
+        """
+
+        assert caller_name is not None
+
         if isinstance(j, basestring):
-            # Interpret as filename
+            # If 'j' is a string, interpret as filename
             filename = j
             f = open(filename)
     
@@ -46,12 +145,33 @@ class json_read_helper:
 
 class search_params:
     """
-    Represents a set of parameters for the FRB search.
-    
-       nfreq: number of frequency channels (int)
-       nsamples: number of time samples (int)
-       dt_sample: length of a time sample in seconds (float)
-       freq_lo_MHz: 
+    search_params: represents a set of parameters for an frb_olympics run.
+
+       self.nfreq: number of frequency channels (int)
+       self.freq_lo_MHz: lowest frequency in band (float, MHz)
+       self.freq_hi_MHz: lowest frequency in band (float, MHz)
+       self.nsamples: number of time samples in each Monte Carlo simulation (int)
+       self.dt_sample: length of a time sample (float, seconds)
+       self.dm_min: minimum dispersion measure (DM) used in the frb_olympics run (float, pc cm^(-3))
+       self.dm_max: maximum dispersion measure (DM) used in the frb_olympics run (float, pc cm^(-3))
+       self.sm_min: minimum scattering measure (SM) used in the frb_olympics run (float, milliseconds)
+       self.sm_max: maximum scattering measure (SM) used in the frb_olympics run (float, milliseconds)
+       self.spectral_index_min: minimum spectral index used in the frb_olympics run (float, dimensionless)
+       self.spectral_index_max: maximum spectral index used in the frb_olympics run (float, dimensionless)
+       self.intrinsic_width_min: minimum intrinsic width used in the frb_olympics run (float, seconds)
+       self.intrinsic_width_max: maximum intrinsic width used in the frb_olympics run (float, seconds)
+       self.snr_min: minimum signal-to-noise ratio used in the frb_olympics run (float, dimensionless)
+       self.snr_max: maximum signal-to-noise ratio used in the frb_olympics run (float, dimensionless)
+
+    When an FRB is simulated, its parameters (DM, SM, SNR, intrinsic width, spectral index)
+    will be randomly drawn from the ranges above.
+
+    Note that we define the scattering measure (SM) to be the scattering timescale at 1 GHz, 
+    in MILLISECONDS (not seconds).  This is the only place where we use milliseconds instead
+    of seconds!
+
+    The JSON file format for the seach_params is just a "flat" dictionary, see `examples/*/search_params.json`
+    for examples.
     """
 
     def __init__(self, nfreq, freq_lo_MHz, freq_hi_MHz, nsamples, dt_sample, dm_max,
@@ -152,36 +272,111 @@ class search_params:
 
 
 class dedisperser_base:
+    """
+    dedipserser_base: this abstract base class represents a dedisperser.
+
+    Subclasses of dedisperser_base are "thin" wrappers around code in other repositories,
+    for example `class bonsai_dedisperser` wraps bonsai (https://github.com/CHIMEFRB/bonsai).
+
+    Subclasses must implement the following functions:
+
+       self.init_search_params(sparams)    required
+       self.allocate()                     optional
+       self.dedisperse(intensity)          required
+       self.deallocate()                   optional
+       self.jsonize()                      required
+       self.from_json()                    required, staticmethod
+
+    These functions might be called in a sequence which looks something like this:
+
+       d = dedisperser_subclass.from_json()
+       d.init_search_params(sparams)    # only called once
+       
+       # First "block" of simulations
+       d.allocate()
+       d.dedisperse(intensity_mc1)
+       d.dedisperse(intensity_mc2)
+       d.deallocate()
+
+       # Second "block" of simulations
+       d.allocate()
+       d.dedisperse(intensity_mc3)
+       d.dedisperse(intensity_mc4)
+       d.deallocate()
+    """
+
     def __init__(self, tex_label):
+        """
+        The subclass constructor should call this base class constructor.
+
+        In the case where the dedisperser is constructed from a json file, the tex_label will
+        be a member of the json dictionary passed to the subclass from_json() staticmethod.
+        See bonsai_dedisperser.from_json() for an example.
+        """
         assert tex_label is not None
         self.tex_label = tex_label
 
 
     def init_search_params(self, sparams):
-        raise RuntimeError("frb_olympics.dedisperser_base.init_search_params() was not overloaded by subclass %s" % self.__class__.__name__)
+        """Must be overridden by subclass.  The 'sparams' argument is an instance of 'class search_params'."""
+        raise RuntimeError("frb_olympics.dedisperser_base.init_search_params() was not overridden by subclass %s" % self.__class__.__name__)
 
 
     def allocate(self):
+        """Overriding this in the subclass is optional, but should probably be done if the dedipserser uses a lot of memory or other resources."""
         pass
 
 
-    def dedisperse(self, arr):
+    def dedisperse(self, intensity):
         """
-        The 'arr' argument is a float32 array of shape (nfreq, nsamples).
+        Must be overridden by subclass.  The 'intensity' argument is a float32 array of shape (nfreq, nsamples).
+
+        Note that 'nfreq', 'nsamples', ... are members of the search_params object, which is passed to init_search_params()
+        before dedipserse() gets called.
+
+        The return value of dedisperse() is a dictionary with 3 members: 'snr', 'dm', and one of { 'tmid', 'tini', 'tfin' }.
+        This allows the dedisperser to use one of three possible definitions of the arrival time of an FRB:
+           "initial" arrival time: arrival time at the highest frequency in the band (i.e. least delayed)
+           "final" arrival time: arrival time at the lowest frequency in the band (i.e. most delayed)
+           "middle" arrival time: average of initial and final times (warning: not the arrival time at the central frequency!)
+
+        (Note that the caller uses 'tmid', and will translate whatever arrival time is returned to a value of 'tmid',
+        but this detail shouldn't affect the implementation of dedisperse() in the subclass.)
         """
-        raise RuntimeError("frb_olympics.dedisperser_base.dedisperse() was not overloaded by subclass %s" % self.__class__.__name__)
+        raise RuntimeError("frb_olympics.dedisperser_base.dedisperse() was not overridden by subclass %s" % self.__class__.__name__)
 
 
     def deallocate(self):
+        """Overriding this in the subclass is optional, but should probably be done if the dedipserser uses a lot of memory or other resources."""
         pass
 
     
     def jsonize(self):
-        raise RuntimeError("frb_olympics.dedisperser_base.jsonize() was not overloaded by subclass %s" % self.__class__.__name__)
+        """
+        Must be overridden by subclass.  The return value should be a python dictionary which is valid JSON.
+
+        (Note that the caller will add additional members 'module_name', 'class_name', 'tex_label' to the dictionary,
+        but this detail shouldn't affect the implementation of jsonize() in the subclass.)
+        """
+        raise RuntimeError("frb_olympics.dedisperser_base.jsonize() was not overridden by subclass %s" % self.__class__.__name__)
 
 
     @staticmethod
     def from_json(j, filename=None):
+        """
+        Must be overridden by subclass.  The return value should be an instance of the subclass.
+
+        One possible point of confusion: there will be two versions of from_json(), the base class staticmethod
+        dedisperser_base.from_json(), and the subclass staticmethod dedisperser_subclass.from_json().  To construct
+        a dedisperser from json data, the caller first calls dedisperser_base.from_json().  This function determines
+        the correct subclass (using the 'module_name' and 'class_name' json members) and then calls the appropriate
+        dedisperser_subclass.from_json().
+
+        Assuming this usage, the implementation of from_json() in the subclass can assume that j is a dictionary
+        which defines the key 'tex_label' (in addition to 'module_name' and 'class_name', but these probably won't
+        be useful to the subclass).
+        """
+
         expected_keys = [ 'module_name', 'class_name' ]
         r = json_read_helper(j, filename, 'frb_olympics.search_params.from_json()', expected_keys)
 
@@ -220,7 +415,30 @@ class dedisperser_base:
 ####################################################################################################
 
 
-class comparison:
+class ensemble:
+    """
+    An frb_olympics Monte Carlo ensemble (`class ensemble`) consists of:
+
+      - A set of parameter ranges (represented by `class search_params`) for the 
+        following parameters: DM, pulse width, spectral index, scattering timescale,
+        signal-to-noise ratio.  In each Monte Carlo realization, each parameter is
+        randomly sampled from its allowed range.
+
+      - A list of dedispersers that will run on the simulations.  These are subclasses
+        of `class dedisperser_base`, and are "thin" wrappers around code in other
+        repositories.  
+
+        Currently, we implement `class bonsai_dedipserser`, which is a wrapper around 
+        bonsai (https://github.com/CHIMEFRB/bonsai), and `class bz_fdmt_dedisperser`,
+        which is a wrapper around FDMT (https://github.com/kmsmith137/bz_fdmt).
+        More coming soon!
+
+      - In each Monte Carlo realization, a simulation is generated consisting of
+        Gaussian random noise, plus a random FRB.  Each dedisperser analyzes the
+        simulation, makes one guess for the location of the FRB, and returns three
+        numbers: the estimated DM, arrival time, and SNR.
+    """
+
     def __init__(self, sparams, dedisperser_list, sim_json=None, add_noise=True):
         assert isinstance(sparams, search_params)
         assert len(dedisperser_list) > 0
@@ -235,7 +453,9 @@ class comparison:
 
         for d in dedisperser_list:
             assert isinstance(d, dedisperser_base)
-            assert hasattr(d, 'tex_label')
+            
+            if not hasattr(d, 'tex_label'):
+                raise RuntimeError("%s: no 'tex_label' member found, you probably forgot to call the base class constructor dedisperser_base.__init__()" % d.__class__.__name__)
 
             j = d.jsonize()
 
@@ -338,7 +558,10 @@ class comparison:
                 p.fluence *= rescaling_factor
 
                 # Add FRB here!
-                p.add_to_timestream(intensity, 0.0, timestream_length, freq_hi_to_lo=True)
+                # Note that we order frequency channels from lowest to highest (the intuitive ordering,
+                # but some dedispersers assume the opposite and will need to reverse it, for example
+                # bonsai and heimdall).
+                p.add_to_timestream(intensity, 0.0, timestream_length)
 
                 # Run dedisperser here!
                 dedisperser_output = d.dedisperse(intensity)
@@ -442,7 +665,7 @@ class comparison:
 
     @staticmethod
     def from_json(j, filename=None):
-        r = json_read_helper(j, filename, 'frb_olympics.comparison.from_json()',
+        r = json_read_helper(j, filename, 'frb_olympics.ensemble.from_json()',
                              expected_keys = ['search_params', 'dedisperser_list', 'sims'])
 
         sparams = search_params.from_json(r.json['search_params'], r.filename)
@@ -453,4 +676,4 @@ class comparison:
             d = dedisperser_base.from_json(dj, r.filename)
             dlist.append(d)
 
-        return comparison(sparams, dlist, sim_json)
+        return ensemble(sparams, dlist, sim_json)

@@ -79,13 +79,10 @@ class bz_fdmt_dedisperser(frb_olympics.dedisperser_base):
     def dedisperse(self, intensity):
         assert intensity.shape == (self.search_params.nfreq, self.search_params.nsamples)
 
-        # Note frequency channel ordering is reversed here!
-        # frb_olympics ordering is highest-to-lowest, but FDMT ordering is lowest-to-highest.
-
-        a = bz_fdmt.FDMT(intensity[::-1,:], self.freq_lo, self.freq_hi, self.idm1, np.float32, Verbose=False)
+        # Run FDMT!
+        a = bz_fdmt.FDMT(intensity, self.freq_lo, self.freq_hi, self.idm1, np.float32, Verbose=False)
 
         # Now we just want to find the (DM,time) of the most significant pulse.
-
         max_snr = 0.0
         max_idm = 0.0
         max_it = 0.0

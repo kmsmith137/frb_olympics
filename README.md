@@ -18,7 +18,7 @@ on whatever subset of them you have installed.
       - [kmsmith137/rf_kernels](https://github.com/kmsmith137/rf_kernels):
         fast C++/assembly kernels for RFI removal and related tasks.
 
-   - bz_fdmt
+   - bz_fdmt (https://github.com/kmsmith137/bz_fdmt).
 
 ### Installation:
 

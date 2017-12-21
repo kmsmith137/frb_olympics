@@ -1,8 +1,40 @@
+"""
+bonsai dedisperser (https://github.com/CHIMEFRB/bonsai).
+
+Note that the DM's and arrival times reported by bonsai are usually coarse-grained for speed, and 
+therefore contain errors due to coarse-graining.  To disable the coarse-graining, you can set
+`dm_coarse_graining` and `time_coarse_graining` to 1 in the bonsai config file.
+
+To do list:
+
+  - Currently, the analytic transfer matrix is computed from scratch whenever a bonsai_dedisperser
+    is constructed, which is annoying!  Should cache it in an HDF5 file (this is mostly implemented
+    in bonsai already.)
+
+  - Cleanup: less verbose output from bonsai_dedisperser.jsonize()
+"""
+
+
 import os
 import copy
 import numpy as np
 
 import frb_olympics
+
+
+####################################################################################################
+
+
+import_successful = False
+
+try:
+    import bonsai
+    import_successful = True
+except ImportError:
+    pass
+
+
+####################################################################################################
 
 
 class bonsai_dedisperser(frb_olympics.dedisperser_base):
@@ -11,10 +43,11 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
         The 'config' argument can be either a dictionary or a filename.
         """
 
-        try:
+        if not import_successful:
+            # Rather than throw an exception, we let 'import bonsai' throw an uncaught
+            # exception, so that the caller can see what the problem is.
             import bonsai
-        except:
-            raise ImportError("frb_olympics: couldn't import 'bonsai'.  You may need to install it from https://github.com/CHIMEFRB/ch_frb_io.")
+            raise RuntimeError("frb_olympics.bonsai_dedisperser internal error: 'import bonsai' worked on the second try?!")
 
         frb_olympics.dedisperser_base.__init__(self, tex_label)
 
@@ -57,7 +90,10 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
             intensity = np.zeros((nfreq, nt_chunk), dtype=np.float32)
             weights = np.zeros((nfreq, nt_chunk), dtype=np.float32)
 
-            intensity[:,:(it1-it0)] = arr[:,it0:it1]
+            # Note that the frequency channel ordering gets reversed here: frb_olympics uses
+            # lowest-to-highest channel ordering, and bonsai uses the opposite.
+
+            intensity[:,:(it1-it0)] = arr[::-1,it0:it1]
             weights[:,:(it1-it0)] = 1.0
             
             self.dedisperser.run(intensity, weights)
@@ -80,10 +116,10 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
     @staticmethod
     def from_json(j, filename=None):
         r = frb_olympics.json_read_helper(j, filename, 'bonsai_dedipserser.from_json()')
+        j = copy.copy(r.json)
 
-        config = copy.copy(r.json)
-        config.pop('module_name')
-        config.pop('class_name')
+        j.pop('module_name')
+        j.pop('class_name')
+        tex_label = j.pop('tex_label')
 
-        tex_label = config.pop('tex_label')
-        return bonsai_dedisperser(config, tex_label)
+        return bonsai_dedisperser(j, tex_label)
