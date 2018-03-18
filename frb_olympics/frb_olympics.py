@@ -327,7 +327,7 @@ class dedisperser_base:
         """
         The subclass constructor should call this base class constructor.
 
-        The 'variance_computed' flag should be True if the dedisperser uses precomputed variance
+        The 'precomputed_variance' flag should be True if the dedisperser uses precomputed variance
         to normalize its signal-to-noise estimates (e.g. bonsai, FDMT).  It should be False if the
         dedisperser estimates its variance directly from the output arrays (e.g. heimdall).
         
@@ -403,7 +403,7 @@ class dedisperser_base:
         """
 
         expected_keys = [ 'module_name', 'class_name' ]
-        r = json_read_helper(j, filename, 'frb_olympics.search_params.from_json()', expected_keys)
+        r = json_read_helper(j, filename, 'frb_olympics.dedisperser_base.from_json()', expected_keys)
 
         j = copy.copy(r.json)
         module_name = j['module_name']
