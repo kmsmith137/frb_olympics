@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+
+import sys
+import argparse
+
+
+####################################################################################################
+#
+# Argument parsing and checking
+
+
+class MyParser(argparse.ArgumentParser):
+    def print_usage(self, file=None):
+        if file is None:
+            file = sys.stdout
+
+        print >>file, "Usage: rfp-to-frb-olympics [-p search_params.json] [-h] <rfp_file1.json> ... <rfp_fileN.json>"
+        print >>file, "Note: output frb_olympics json file will be written to stdout, so redirect!"
+        print >>file, "    -h: show longer help message and exit"
+
+
+    def error(self, message=None):
+        self.print_usage(sys.stderr)
+
+        if message is not None:
+            print >>sys.stderr, '\nError:', message
+
+        sys.exit(2)
+
+    
+    def print_help(self, file=None):
+        self.print_usage(file)
+        print >>file
+        print >>file, 'This utility program reads one or more \"rf_pipelines\" json_files'
+        print >>file, '(which represent serialized pipeline objects, such as RFI clippers or dedispersers)'
+        print >>file, 'concatenates them into a pipeline, and serializes the result as an \"frb_olympics\"'
+        print >>file, "json file, for later use (e.g. in the 'run-frb-olympics' utility program)"
+        print >>file        
+        print >>file, "Note: you will probably want to verify the output file, with something like:"
+        print >>file, "   run-frb-olympics -o deleteme -n 1 search_params.json output_file.json"
+        print >>file
+        print >>file, "For an example, see 'examples/example2_rf_pipelines' in the frb_olympics source tree."
+        print >>file
+
+parser = MyParser()
+
+parser.add_argument('rfp_filenames', nargs='+')
+
+args = parser.parse_args()
+
+
+####################################################################################################
+
+
+import frb_olympics
+import rf_pipelines
+
+p = [ rf_pipelines.pipeline_object.from_json(f) for f in args.rfp_filenames_list ]
+
