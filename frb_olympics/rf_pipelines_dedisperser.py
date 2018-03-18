@@ -1,3 +1,51 @@
+"""
+The class 'frb_olympics.rf_pipelines_dedisperser' allows an arbitrary rf_pipelines dedispersion
+pipeline to be used in the frb_olympics.
+
+rf_pipelines (https://github.com/kmsmith137/rf_pipelines) is a high-level library for defining
+radio astronomy pipelines, which can contain dedispersers in addition to other pipeline elements,
+e.g. detrenders or RFI clippers.
+
+Note that the rf_pipelines and frb_olympics libraries define their own json file formats and 
+abstract base classes, which may be confusing!  In simple examples, it will be easier to skip
+rf_pipelines and use frb_olympics directly.  For example, suppose you just want to run bonsai
+in the frb_olympics.  Then you have two options:
+
+  1. Use 'class frb_olympics.bonsai_dedisperser' to wrap a bonsai dedisperser (see
+     frb_olympics/examples/example0_bonsai)
+
+  2. Construct an rf_pipelines.pipeline_object containing the bonsai dedisperser, and
+     wrap it with 'class frb_olympics.rf_pipelines_dedisperser' to make it useable in
+     the frb_olympics.
+
+In this case, option 1 would be simplest (there is one wrapper class involved instead of two).
+
+However, you may be interested in more complex examples in which the bonsai dedisperser is
+combined with other pipeline elements, such as an RFI removal pipeline.  In this case, you
+would need to use option 2.
+
+Note that when using the frb_olympics.rf_pipelines_dedisperser, two types of json files may arise:
+
+  - An "rf_pipelines json file", which serializes an rf_pipelines.pipeline_object.
+
+  - An "frb_olympics json file", which serializes an frb_olympics.rf_pipelines_dedisperser
+    which wraps an rf_pipelines.pipeline_object.
+
+When running the frb olympics (e.g. through the utility program 'run-frb-olympics') you probably
+want the latter (the frb_olympics json file).  Another utility program which may be useful is
+'rfp-to-frb-olympics', which constructs an frb_olympics json file from one or more rf_pipelines
+json files.  Here is an example of how to use these utilities:
+
+   # Suppose we start with two rf_pipelines json files, 'rfi_removal.json' and 'dedisperser.json'.
+   # This command combines them into a single pipeline, and serializes the result to an frb_olympics
+   # json file (not an rf_pipelines json file!)
+
+   rfp-to-frb-olympics -o pipeline1.json rfi_removal.json dedisperser.json
+
+   # Now run the frb olympics
+   run-frb-olympics -o example -n 64 search_params.json pipeline1.json
+"""
+
 import os
 import copy
 import numpy as np
