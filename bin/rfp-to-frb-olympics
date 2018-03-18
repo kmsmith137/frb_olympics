@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import sys
 import argparse
 
@@ -14,8 +15,9 @@ class MyParser(argparse.ArgumentParser):
         if file is None:
             file = sys.stdout
 
-        print >>file, "Usage: rfp-to-frb-olympics [-p search_params.json] [-h] <rfp_file1.json> ... <rfp_fileN.json>"
-        print >>file, "Note: output frb_olympics json file will be written to stdout, so redirect!"
+        print >>file, "Usage: rfp-to-frb-olympics [-fh] [-t tex_label] -o outfile.json <rfp_file1.json> ... <rfp_fileN.json>"
+        print >>file, "    -f: if output file exists, overwrite it (default is to fail with an error)"
+        print >>file, "    -t: this flag can be used to specify frb_olympics tex label (default is derived from output filename)"
         print >>file, "    -h: show longer help message and exit"
 
 
@@ -45,15 +47,55 @@ class MyParser(argparse.ArgumentParser):
 parser = MyParser()
 
 parser.add_argument('rfp_filenames', nargs='+')
+parser.add_argument('-f', action='store_true')
+parser.add_argument('-o', dest='outfile')
+parser.add_argument('-t', dest='tex_label')
 
 args = parser.parse_args()
+
+if args.outfile is None:
+    parser.error("The -o flag is mandatory")
+
+if (not args.f) and os.path.exists(args.outfile):
+    parser.error("rfp-to-frb-olympics: output file '%s' exists (need to either delete this file, or invoke rfp-to-frb-olympics with the -f flag)" % args.outfile)
+
+tex_label = args.tex_label
+
+if tex_label is None:
+    tex_label = os.path.basename(args.outfile)
+    i = tex_label.find('.')
+    if i > 0:
+        tex_label = tex_label[:i]
+
+    print "Note: using tex_label '%s' (to change, either edit the json output file, or invoke rfp-to-frb-olympics with the -t flag)" % tex_label
 
 
 ####################################################################################################
 
 
+import json
 import frb_olympics
 import rf_pipelines
 
-p = [ rf_pipelines.pipeline_object.from_json(f) for f in args.rfp_filenames_list ]
+t = [ ]
 
+for f in args.rfp_filenames:
+    j = rf_pipelines.json_read(f)
+    p = rf_pipelines.pipeline_object.from_json(j)
+    t.append(p)
+
+# (list of rf_pipelines.pipeline_objects) -> rf_pipelines.pipeline_object
+t = rf_pipelines.pipeline(t) if (len(t) > 1) else t[0]
+
+# rf_pipelines.pipeline_object -> frb_olympics.rf_pipelines_dedisperser
+t = frb_olympics.rf_pipelines_dedisperser(t, tex_label)
+
+# frb_olympics.rf_pipelines_dedisperser -> json (dictionary)
+t = t.jsonize()
+
+f = open(args.outfile, 'w')
+json.dump(t, f, indent=4)
+print >>f, ''   # extra newline
+f.close()
+
+print 'wrote', args.outfile

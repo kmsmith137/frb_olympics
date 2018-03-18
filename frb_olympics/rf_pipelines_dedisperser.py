@@ -290,7 +290,7 @@ class rf_pipelines_dedisperser(frb_olympics.dedisperser_base):
         Overrides dedisperser_base.jsonize().  The return value should be a python dictionary which is valid JSON.
         Note: Caller will add additional members 'module_name', 'class_name', 'tex_label' to the dictionary.
         """
-        return { "pipeline": self.base_pipeline.jsonize() }
+        return { "rf_pipeline": self.base_pipeline.jsonize() }
 
 
     @staticmethod
@@ -300,10 +300,10 @@ class rf_pipelines_dedisperser(frb_olympics.dedisperser_base):
         and returns an rf_pipelines_dedisperser instance.
         """
 
-        expected_keys = [ 'tex_label', 'pipeline' ]
+        expected_keys = [ 'tex_label', 'rf_pipeline' ]
         r = frb_olympics.json_read_helper(j, filename, 'rf_pipelines_dedipserser.from_json()', expected_keys)
         
-        p = rf_pipelines.pipeline_object.from_json(r.json['pipeline'])
+        p = rf_pipelines.pipeline_object.from_json(r.json['rf_pipeline'])
         return rf_pipelines_dedisperser(p, r.json['tex_label'])
 
 
