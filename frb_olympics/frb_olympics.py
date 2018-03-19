@@ -680,7 +680,7 @@ class ensemble:
             d.deallocate()
 
 
-    def make_snr_plot(self, plot_filename, xaxis_param, xaxis_label, legend_labels = None):
+    def make_snr_plot(self, plot_filename, f_xaxis, xaxis_label, legend_labels=None, xmin=None, xmax=None, legloc = 'lower left'):
         """
         Makes one SNR plot, with 
 
@@ -690,8 +690,15 @@ class ensemble:
         Arguments:
         
           - plot_filename: should end in '.pdf'
-          - xaxis_param: either 'dm', 'sm', 'snr', 'spectral_index', 'intrinsic_width'
-          - xaxis_label: a TeX axis label consistent with xaxis_param, for example 'DM'.
+
+          - f_xaxis: a function (or callable object) which returns an x-axis value,
+            given a dictionary with the following keys defined:
+               { 'dm', 'spectral_index', 'tmid', 'snr', 'sm', 'intrinsic_width' } 
+
+            Example: to plot with DM on the x-axis, pass f_xaxis = lambda d: d['dm']
+
+          - xaxis_label: a TeX axis label, for example 'DM'.
+
           - legend_labels: list of tex labels, one for each dedisperser.
               (optional: if unspecified, then default tex_labels will be used.)
         """
@@ -705,14 +712,17 @@ class ensemble:
             
         assert len(legend_labels) == len(self.dedisperser_list)
 
-        xmin = getattr(self.search_params, xaxis_param + '_min')
-        xmax = getattr(self.search_params, xaxis_param + '_max')
+        xvec = np.array([ f_xaxis(s['true_params']) for s in self.sim_json ])
 
-        if xmin == xmax:
-            print "%s: no plot written, the parameter '%s' was not varied in this run" % (plot_filename, xaxis_param)
+        if xmin is None:
+            xmin = np.min(xvec)
+        if xmax is None:
+            xmax = np.max(xvec)
+
+        if xmin >= xmax:
+            print "%s: no plot written, since xmin == xmax in this run" % plot_filename
             return
-                               
-        xvec = np.array([ s['true_params'][xaxis_param] for s in self.sim_json ])
+        
         yarr = np.array([ [ (r['snr']/s['true_params']['snr']) for r in s['recovered_params'] ] for s in self.sim_json ])
 
         assert xvec.shape == (len(self.sim_json),)
@@ -732,7 +742,7 @@ class ensemble:
             s = plt.scatter(xvec, yarr[:,ids], s=5, color=c, marker='o')
             slist.append(s)
 
-        plt.legend(slist, legend_labels, scatterpoints=1, loc='lower left')
+        plt.legend(slist, legend_labels, scatterpoints=1, loc=legloc)
         plt.savefig(plot_filename)
         plt.clf()
 
@@ -766,7 +776,7 @@ class ensemble:
 
         for (xaxis_param, xaxis_label) in todo:
             plot_filename = '%s_snr_vs_%s.pdf' % (plot_filename_stem, xaxis_param)
-            self.make_snr_plot(plot_filename, xaxis_param, xaxis_label, legend_labels)
+            self.make_snr_plot(plot_filename, lambda d: d[xaxis_param], xaxis_label, legend_labels)
 
 
     def jsonize(self):
