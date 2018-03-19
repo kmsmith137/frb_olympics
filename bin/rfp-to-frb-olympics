@@ -63,10 +63,7 @@ tex_label = args.tex_label
 
 if tex_label is None:
     tex_label = os.path.basename(args.outfile)
-    i = tex_label.find('.')
-    if i > 0:
-        tex_label = tex_label[:i]
-
+    tex_label = tex_label.split('.')[0]
     print "Note: using tex_label '%s' (to change, either edit the json output file, or invoke rfp-to-frb-olympics with the -t flag)" % tex_label
 
 
