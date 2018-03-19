@@ -164,6 +164,8 @@ class rf_pipelines_dedisperser(frb_olympics.dedisperser_base):
           True: dedisperser found, and does use precomputed analytic variance
         """
 
+        # Note: any changes made in this routine should be reflected in _analyze_pipeline_output() below.
+
         if isinstance(pipeline, rf_pipelines.pipeline_object):
             #
             # This is sort of a hack, but we replace the pipeline_object by its jsonization, and use
@@ -229,6 +231,40 @@ class rf_pipelines_dedisperser(frb_olympics.dedisperser_base):
         return None
         
 
+    def _analyze_pipeline_output(self, j):
+        """
+        Helper method called by self.dedisperse() below.
+        """
+
+        if isinstance(j, list):            
+            ret = None
+            count = 0
+
+            for jj in j:
+                t = self._analyze_pipeline_output(jj)
+                if t is not None:
+                    ret = t
+                    count += 1
+
+            if count > 1:
+                raise RuntimeError("frb_olympics.rf_pipelines_dedisperser: pipeline defines multiple dedispersers?!")
+
+            return ret
+
+        assert isinstance(j, dict)
+        assert j.has_key('class_name')
+
+        if j['class_name'] == 'bonsai_dedisperser':
+            return { 'snr': j['frb_global_max_trigger'],
+                     'dm': j['frb_global_max_trigger_dm'],
+                     'tfin': j['frb_global_max_trigger_tfinal'] }
+            
+        if j['class_name'] in [ 'pipeline', 'wi_sub_pipeline' ]:
+            return self._analyze_pipeline_output(j['pipeline'])
+
+        return None
+        
+
     def init_search_params(self, sparams):
         """Overrides dedisperser_base.init_search_params().  The 'sparams' argument is an instance of 'class search_params'."""
 
@@ -267,17 +303,12 @@ class rf_pipelines_dedisperser(frb_olympics.dedisperser_base):
         j = self.full_pipeline.run(outdir=None, verbosity=0)        
         self.stream.set_intensity_arr(None)
 
-        expected_keys = [ 'frb_global_max_trigger',
-                          'frb_global_max_trigger_dm',
-                          'frb_global_max_trigger_tfinal' ]
+        ret = self._analyze_pipeline_output(j)
 
-        for k in expected_keys:
-            if not j.has_key(k):
-                raise RuntimeError("rf_pipelines_dedisperser: pipeline failed to set json attribute '%s' as expected" % k)
-        
-        return { 'snr': j['frb_global_max_trigger'],
-                 'dm': j['frb_global_max_trigger_dm'],
-                 'tfin': j['frb_global_max_trigger_tfinal'] }
+        if ret is None:
+            raise RuntimeError("rf_pipelines_dedisperser: couldn't find dedisperser outputs in pipeline json output")
+
+        return ret
 
 
     def deallocate(self):
