@@ -143,8 +143,8 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
         self.dedisperser.deallocate()
 
 
-    def jsonize(self):
-        """Overrides dedisperser_base.jsonize().  The return value should be a python dictionary which is valid JSON."""
+    def _jsonize(self):
+        """Note: called through jsonize(), which will add additional members 'module_name', 'class_name', 'tex_label' to the dictionary."""
         return self.dedisperser.config
 
 

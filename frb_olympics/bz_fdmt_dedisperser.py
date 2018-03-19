@@ -158,8 +158,8 @@ class bz_fdmt_dedisperser(frb_olympics.dedisperser_base):
                  'tfin': it * self.dt_sample }
 
     
-    def jsonize(self):
-        """Overrides dedisperser_base.jsonize().  The return value should be a python dictionary which is valid JSON."""
+    def _jsonize(self):
+        """Note: called through jsonize(), which will add additional members 'module_name', 'class_name', 'tex_label' to the dictionary."""
 
         # Since FDMT has no free parameters, this can just be an empty dictionary!
         return { }

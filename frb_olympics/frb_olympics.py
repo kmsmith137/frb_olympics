@@ -377,12 +377,23 @@ class dedisperser_base:
     
     def jsonize(self):
         """
-        Must be overridden by subclass.  The return value should be a python dictionary which is valid JSON.
-
-        (Note that the caller will add additional members 'module_name', 'class_name', 'tex_label' to the dictionary,
-        but this detail shouldn't affect the implementation of jsonize() in the subclass.)
+        Serializes dedisperser to a json object, and returns it as a python dictionary.
+        Mostly delegates to self._jsonize(), which must be defined by the subclass.
         """
-        raise RuntimeError("frb_olympics.dedisperser_base.jsonize() was not overridden by subclass %s" % self.__class__.__name__)
+
+        if not hasattr(self, '_jsonize'):
+            raise RuntimeError("frb_olympics: %s._jsonize() was not defined" % self.__class__.__name__)
+
+        j = self._jsonize()
+
+        if not isinstance(j, dict):
+            raise RuntimeError("expected %s._jsonize() to return dict (returned %s)" % (self.__class__.__name__, j.__class__.__name__))
+
+        j['module_name'] = self.__module__
+        j['class_name'] = self.__class__.__name__
+        j['tex_label'] = self.tex_label
+
+        return j
 
 
     @staticmethod
@@ -508,13 +519,6 @@ class ensemble:
                 raise RuntimeError("%s: this dedisperser does not use precomputed variances, but is being used in a noiseless run (for more info, see 'run-frb-olympics -h')" % d.__class__.__name___)
 
             j = d.jsonize()
-
-            if not isinstance(j, dict):
-                raise RuntimeError("expected %s.jsonize() to return dict (returned %s)" % (p.__class__.__name__, j.__class__.__name__))
-
-            j['module_name'] = d.__module__
-            j['class_name'] = d.__class__.__name__
-            j['tex_label'] = d.tex_label
 
             self.dedisperser_json.append(j)
 
