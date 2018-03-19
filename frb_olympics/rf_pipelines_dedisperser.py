@@ -107,7 +107,7 @@ if import_successful:
             nt = max(nt, 0)
 
             if nt > 0:
-                intensity[:,:nt] = self.intensity_arr[:,pos:(pos+nt)]
+                intensity[:,:nt] = self.intensity_arr[::-1,pos:(pos+nt)]
                 weights[:,:nt] = 1.0
 
             if nt < self.nt_chunk:
