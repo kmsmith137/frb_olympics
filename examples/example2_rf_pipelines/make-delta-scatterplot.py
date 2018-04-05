@@ -10,7 +10,7 @@ import frb_olympics
 
 e = frb_olympics.ensemble.from_json('example2.json')
 
-e.make_snr_plot('Delta.pdf',
+e.make_snr_plot('example2_delta.pdf',
                 lambda d: d['dm'] / (1.0e6*d['intrinsic_width']**2 + 1)**0.5,
                 r'$\Delta$',
                 xmin = 0,
