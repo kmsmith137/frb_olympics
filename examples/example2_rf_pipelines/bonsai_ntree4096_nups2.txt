@@ -1,0 +1,11 @@
+nfreq = 1024
+freq_lo_MHz = 400.0
+freq_hi_MHz = 800.0
+dt_sample = 0.001
+nt_chunk = 1024
+tree_size = [ 4096, 4096, 2048, 1024, 512 ]
+nups = [ 2, 1, 1, 1, 1 ]
+nds = [ 1, 1, 2, 4, 8 ]
+dm_coarse_graining_factor = [ 16, 16, 8, 4, 2 ]
+time_coarse_graining_factor = [ 16, 16, 8, 1, 1 ]
+
