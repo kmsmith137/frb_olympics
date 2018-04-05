@@ -64,11 +64,10 @@ tex_label = args.tex_label
 if tex_label is None:
     tex_label = os.path.basename(args.outfile)
     tex_label = tex_label.split('.')[0]
-    
-    # Replace underscores by r'\_', to avoid crashing latex!
-    tex_label = tex_label.replace('_', r'\_')
-
     print "Note: using tex_label '%s' (to change, either edit the json output file, or invoke rfp-to-frb-olympics with the -t flag)" % tex_label
+    
+# Replace underscores by r'\_', to avoid crashing latex!
+tex_label = tex_label.replace('_', r'\_')
 
 
 ####################################################################################################
