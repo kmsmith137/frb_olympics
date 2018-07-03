@@ -1,0 +1,5 @@
+{
+    "module_name": "frb_olympics.bonsai_dedisperser",
+    "class_name": "bonsai_dedisperser",
+    "config_filename": "/data/bonsai_configs/bonsai_production_noups_nbeta2_v2.hdf5"
+}

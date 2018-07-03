@@ -1,0 +1,8 @@
+{
+    "nfreq": 16384,
+    "freq_lo_MHz": 400.0,
+    "freq_hi_MHz": 800.0,
+    "nsamples": 600000,
+    "dt_sample": 0.00098304,
+    "dm_max": 2000.0
+}
