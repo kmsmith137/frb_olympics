@@ -7,10 +7,6 @@ therefore contain errors due to coarse-graining.  To disable the coarse-graining
 
 To do list:
 
-  - Currently, the analytic transfer matrix is computed from scratch whenever a bonsai_dedisperser
-    is constructed, which is annoying!  Should cache it in an HDF5 file (this is mostly implemented
-    in bonsai already.)
-
   - Cleanup: less verbose output from bonsai_dedisperser.jsonize()
 """
 
@@ -46,11 +42,25 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
         """
 
         if not import_successful:
-            # Rather than throw an exception, we let 'import bonsai' throw an uncaught
+            # Rather than raise an exception, we let 'import bonsai' raise an uncaught
             # exception, so that the caller can see what the problem is.
 
             import bonsai as b
             raise RuntimeError("frb_olympics.bonsai_dedisperser internal error: 'import bonsai' worked on the second try?!")
+
+        # A little convoluted, but after this block, 'config' will contain the argument to
+        # the bonsai.Dedisperser constructor, and self.config_filename will be defined iff
+        # the dedipserser is being constructed from a filename.
+
+        if isinstance(config, basestring):
+            self.config_filename = config
+        elif not isinstance(config, dict):
+            raise RuntimeError("frb_olympics.bonsai_dedisperser: 'config' constructor argument must be a filename or a dictionary")
+        elif config.has_key('config_filename'):
+            self.config_filename = config.pop('config_filename')
+            for (k,v) in config.iteritems():
+                print "frb_olympics.bonsai_dedisperser: warning: parameter '%s' ignored, since 'config_filename' was specified" % k
+            config = self.config_filename
 
         # Calling the bonsai.Dedisperser constructor with use_analytic_normalization=True 
         # means that bonsai will precompute the exact variance of its output array, assuming 
@@ -145,6 +155,9 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
 
     def _jsonize(self):
         """Note: called through jsonize(), which will add additional members 'module_name', 'class_name', 'tex_label' to the dictionary."""
+
+        if hasattr(self, 'config_filename'):
+            return { 'config_filename': self.config_filename }
         return self.dedisperser.config
 
 
@@ -164,6 +177,6 @@ class bonsai_dedisperser(frb_olympics.dedisperser_base):
 
         j.pop('module_name')
         j.pop('class_name')
-        tex_label = j.pop('tex_label')
 
+        tex_label = j.pop('tex_label')
         return bonsai_dedisperser(j, tex_label)
